@@ -335,6 +335,11 @@ except ImportError as e:
     sys.stdout.write("Could not import island world / structured objects.\nError: %s \n\n" % e.msg)
 
 try:
+    from micropsi_core.world.island.pixels import pixels
+except ImportError as e:
+    sys.stdout.write("Could not import island world / pixels.\nError: %s \n\n" % e.msg)
+
+try:
     from micropsi_core.world.berlin import berlin
 except ImportError as e:
     sys.stdout.write("Could not import berlin world.\nError: %s \n\n" % e.msg)
