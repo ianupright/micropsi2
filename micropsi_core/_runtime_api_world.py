@@ -227,3 +227,4 @@ def get_available_world_types():
     from micropsi_core.world.world import World
 
     return [cls.__name__ for cls in vars()['World'].__subclasses__()]
+

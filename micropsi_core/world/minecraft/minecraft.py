@@ -6,6 +6,7 @@ from micropsi_core.world.worldadapter import WorldAdapter
 from spock.plugins import DefaultPlugins
 from spock.client import Client
 from micropsi_core.world.minecraft import spockplugin
+from micropsi_core.world.minecraft.minecraftvision import MinecraftVision
 from spock.plugins.helpers.clientinfo import ClientInfoPlugin
 from spock.plugins.helpers.move import MovementPlugin
 from spock.plugins.helpers.world import WorldPlugin
@@ -14,12 +15,15 @@ from spock.plugins.core.event import EventPlugin
 
 class Minecraft(World):
     """ mandatory: list of world adapters that are supported"""
-    supported_worldadapters = ['MinecraftWorldadapter']
+    supported_worldadapters = ['MinecraftBraitenberg', 'MinecraftVision']
 
     assets = {
-    'x': 2048,
-    'y': 2048,
-    }
+        'background': "island/psi_1.png",
+        'template': 'island/island.tpl',
+        'js': "minecraft/minecraft.js",
+        'x': 256,
+        'y': 256,
+        }
 
 
 
@@ -88,7 +92,7 @@ class Minecraft(World):
         self.spockplugin.threadpool.shutdown(False)
 
 
-class MinecraftWorldadapter(WorldAdapter):
+class MinecraftBraitenberg(WorldAdapter):
 
     datasources = {'diamond_offset_x': 0,
                    'diamond_offset_z': 0,
