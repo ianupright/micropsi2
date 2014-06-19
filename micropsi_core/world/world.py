@@ -336,6 +336,7 @@ except ImportError as e:
 
 try:
     from micropsi_core.world.island.pixels import pixels
+    from micropsi_core.world.island.pixels import pixels_training
 except ImportError as e:
     sys.stdout.write("Could not import island world / pixels.\nError: %s \n\n" % e.msg)
 

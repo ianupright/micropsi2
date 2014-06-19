@@ -10,7 +10,7 @@ from micropsi_core.world.island import png
 class Island(World):
 
     """ mandatory: list of world adapters that are supported"""
-    supported_worldadapters = ['Braitenberg', 'Survivor', 'StructuredObjects', 'Pixels']
+    supported_worldadapters = ['Braitenberg', 'Survivor', 'StructuredObjects', 'Pixels', 'PixelsTraining']
 
     groundmap = {
         'image': "psi_1.png",

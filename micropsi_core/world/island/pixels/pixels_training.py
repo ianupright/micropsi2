@@ -5,6 +5,7 @@ import random
 from micropsi_core.world.island import island
 from micropsi_core.world.island.structured_objects.objects import *
 from micropsi_core.world.island.structured_objects.scene import Scene
+from micropsi_core.world.island.pixels import patterngenerator
 from micropsi_core.world.worldadapter import WorldAdapter
 
 
@@ -14,13 +15,16 @@ class PixelsTraining(WorldAdapter):
     datasources = {}
     datatargets = {}
 
+    currentpattern = []
+
     def __init__(self, world, uid=None, **data):
         super(PixelsTraining, self).__init__(world, uid, **data)
 
-        for x in range(-5, 5):
-            for y in range(-5,5):
+        currentpattern = patterngenerator.create_shape(None)
+        for x in range(0, len(currentpattern)):
+            for y in range(0, len(currentpattern[0])):
                 datasourcename = "pxl_"+str(x)+"_"+str(y)
-                self.datasources[datasourcename] = 0
+                self.datasources[datasourcename] = currentpattern[x][y]
 
     def update(self):
         """called on every world simulation step to advance the life of the agent"""
