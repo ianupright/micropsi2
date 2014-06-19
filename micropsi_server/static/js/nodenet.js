@@ -586,14 +586,15 @@ function addLink(link) {
 
 function redrawLink(link, forceRedraw){
     var oldLink = links[link.uid];
-    if (forceRedraw || !oldLink || !(link.uid in linkLayer.children) || (oldLink.weight != link.weight ||
+    if (forceRedraw || !oldLink || !(link.uid in linkLayer.children) || oldLink.weight != link.weight ||
         oldLink.certainty != link.certainty ||
         nodes[oldLink.sourceNodeUid].gates[oldLink.gateName].sheaves[currentSheaf].activation !=
-            nodes[link.sourceNodeUid].gates[link.gateName].sheaves[currentSheaf].activation)) {
+            nodes[link.sourceNodeUid].gates[link.gateName].sheaves[currentSheaf].activation) {
         if(link.uid in linkLayer.children){
             linkLayer.children[link.uid].remove();
         }
         renderLink(link);
+        links[link.uid] = link;
     }
 }
 
@@ -1969,6 +1970,17 @@ function initializeMenus() {
     $("#edit_link_modal form").on('submit', handleEditLink);
     $("#nodenet").on('dblclick', onDoubleClick);
     $("#nodespace_up").on('click', handleNodespaceUp);
+    gate_form_trigger = $('.gate_additional_trigger');
+    gate_params = $('.gate_additional');
+    gate_form_trigger.on('click', function(){
+        if(gate_params.hasClass('hide')){
+            gate_form_trigger.text("Hide additional parameters");
+            gate_params.removeClass('hide');
+        } else {
+            gate_form_trigger.text("Show additional parameters");
+            gate_params.addClass('hide');
+        }
+    });
 }
 
 function initializeControls(){

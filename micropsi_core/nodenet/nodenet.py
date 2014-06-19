@@ -645,9 +645,8 @@ class Nodenet(object):
             source_node_uid, gate_type,
             target_node_uid, slot_type)
         if existing_uid:
+            self.set_link_weight(existing_uid, weight, certainty)
             link = self.links[existing_uid]
-            link.weight = weight
-            link.certainty = certainty
         else:
             link = Link(
                 self.nodes[source_node_uid],
@@ -743,7 +742,7 @@ class NetAPI(object):
             for candidate_gate_name, candidate_gate in candidate.gates.items():
                 if len(candidate_gate.outgoing) > 0:
                     linked_gates.append(candidate_gate_name)
-            if ((nodespace is None or nodespace is link.target_node.parent_nodespace) and
+            if ((nodespace is None or nodespace == link.target_node.parent_nodespace) and
                 (no_links_to is None or not len(set(no_links_to).intersection(set(linked_gates))))):
                 nodes.append(candidate)
         return nodes
@@ -760,7 +759,7 @@ class NetAPI(object):
             for candidate_gate_name, candidate_gate in candidate.gates.items():
                 if len(candidate_gate.outgoing) > 0:
                     linked_gates.append(candidate_gate_name)
-            if ((nodespace is None or nodespace is link.source_node.parent_nodespace) and
+            if ((nodespace is None or nodespace == link.source_node.parent_nodespace) and
                 (no_links_to is None or not len(set(no_links_to).intersection(set(linked_gates))))):
                 nodes.append(candidate)
         return nodes
@@ -792,6 +791,8 @@ class NetAPI(object):
         Creates a new node or node space of the given type, with the given name and in the given nodespace.
         Returns the newly created entity.
         """
+        if name is None:
+            name = ""   #TODO: empty names crash the client right now, but really shouldn't
         pos = (self.__nodenet.max_coords['x'] + 50, 100)  # default so native modules will not be bothered with positions
         if nodetype == "Nodespace":
             entity = Nodespace(self.__nodenet, nodespace, pos, name=name)
@@ -809,17 +810,28 @@ class NetAPI(object):
 
     def link_with_reciprocal(self, source_node, target_node, linktype, weight=1, certainty=1):
         """
-        Creates two (reciprocal) links between two nodes, valid linktypes are subsur, porret, and catexp
+        Creates two (reciprocal) links between two nodes, valid linktypes are subsur, porret, catexp and symref
         """
         if linktype == "subsur":
-            self.__nodenet.create_link(source_node.uid, "sub", target_node.uid, "sub", weight, certainty)
-            self.__nodenet.create_link(target_node.uid, "sur", source_node.uid, "sur", weight, certainty)
+            subslot = "sub" if "sub" in target_node.slots else "gen"
+            surslot = "sur" if "sur" in target_node.slots else "gen"
+            self.__nodenet.create_link(source_node.uid, "sub", target_node.uid, subslot, weight, certainty)
+            self.__nodenet.create_link(target_node.uid, "sur", source_node.uid, surslot, weight, certainty)
         elif linktype == "porret":
-            self.__nodenet.create_link(source_node.uid, "por", target_node.uid, "por", weight, certainty)
-            self.__nodenet.create_link(target_node.uid, "ret", source_node.uid, "ret", weight, certainty)
+            porslot = "por" if "por" in target_node.slots else "gen"
+            retslot = "ret" if "ret" in target_node.slots else "gen"
+            self.__nodenet.create_link(source_node.uid, "por", target_node.uid, porslot, weight, certainty)
+            self.__nodenet.create_link(target_node.uid, "ret", source_node.uid, retslot, weight, certainty)
         elif linktype == "catexp":
-            self.__nodenet.create_link(source_node.uid, "cat", target_node.uid, "cat", weight, certainty)
-            self.__nodenet.create_link(target_node.uid, "exp", source_node.uid, "exp", weight, certainty)
+            catslot = "cat" if "cat" in target_node.slots else "gen"
+            expslot = "exp" if "exp" in target_node.slots else "gen"
+            self.__nodenet.create_link(source_node.uid, "cat", target_node.uid, catslot, weight, certainty)
+            self.__nodenet.create_link(target_node.uid, "exp", source_node.uid, expslot, weight, certainty)
+        elif linktype == "symref":
+            symslot = "sym" if "sym" in target_node.slots else "gen"
+            refslot = "ref" if "ref" in target_node.slots else "gen"
+            self.__nodenet.create_link(source_node.uid, "sym", target_node.uid, symslot, weight, certainty)
+            self.__nodenet.create_link(target_node.uid, "ref", source_node.uid, refslot, weight, certainty)
 
     def link_full(self, nodes, linktype="porret", weight=1, certainty=1):
         """
@@ -915,6 +927,13 @@ class NetAPI(object):
                     sensor.parameters.update({'datasource': datasource})
                 all_sensors.append(sensor)
         return all_sensors
+
+    def set_gatefunction(self, nodespace, nodetype, gatetype, gatefunction):
+        """Sets the gatefunction for gates of type gatetype of nodes of type nodetype, in the given
+            nodespace.
+            The gatefunction needs to be given as a string.
+        """
+        self.__nodenet.nodespaces[nodespace].set_gate_function(nodetype, gatetype, gatefunction)
 
     def is_locked(self, lock):
         """Returns true if the given lock is locked in the current net step
