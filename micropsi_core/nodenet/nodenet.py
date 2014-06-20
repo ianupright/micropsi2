@@ -698,6 +698,10 @@ class NetAPI(object):
         return self.__nodenet.uid
 
     @property
+    def step(self):
+        return self.__nodenet.current_step
+
+    @property
     def world(self):
         return self.__nodenet.world
 
@@ -814,22 +818,22 @@ class NetAPI(object):
         """
         if linktype == "subsur":
             subslot = "sub" if "sub" in target_node.slots else "gen"
-            surslot = "sur" if "sur" in target_node.slots else "gen"
+            surslot = "sur" if "sur" in source_node.slots else "gen"
             self.__nodenet.create_link(source_node.uid, "sub", target_node.uid, subslot, weight, certainty)
             self.__nodenet.create_link(target_node.uid, "sur", source_node.uid, surslot, weight, certainty)
         elif linktype == "porret":
             porslot = "por" if "por" in target_node.slots else "gen"
-            retslot = "ret" if "ret" in target_node.slots else "gen"
+            retslot = "ret" if "ret" in source_node.slots else "gen"
             self.__nodenet.create_link(source_node.uid, "por", target_node.uid, porslot, weight, certainty)
             self.__nodenet.create_link(target_node.uid, "ret", source_node.uid, retslot, weight, certainty)
         elif linktype == "catexp":
             catslot = "cat" if "cat" in target_node.slots else "gen"
-            expslot = "exp" if "exp" in target_node.slots else "gen"
+            expslot = "exp" if "exp" in source_node.slots else "gen"
             self.__nodenet.create_link(source_node.uid, "cat", target_node.uid, catslot, weight, certainty)
             self.__nodenet.create_link(target_node.uid, "exp", source_node.uid, expslot, weight, certainty)
         elif linktype == "symref":
             symslot = "sym" if "sym" in target_node.slots else "gen"
-            refslot = "ref" if "ref" in target_node.slots else "gen"
+            refslot = "ref" if "ref" in source_node.slots else "gen"
             self.__nodenet.create_link(source_node.uid, "sym", target_node.uid, symslot, weight, certainty)
             self.__nodenet.create_link(target_node.uid, "ref", source_node.uid, refslot, weight, certainty)
 
@@ -848,7 +852,7 @@ class NetAPI(object):
         """
         links_to_delete = []
         for gatetype, gateobject in source_node.gates.items():
-            if source_gate is None or source_gate is gatetype:
+            if source_gate is None or source_gate == gatetype:
                 for linkid, link in gateobject.outgoing.items():
                     if target_node is None or target_node.uid == link.target_node.uid:
                         if target_slot is None or target_slot == link.target_slot.type:
