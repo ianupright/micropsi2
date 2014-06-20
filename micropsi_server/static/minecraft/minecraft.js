@@ -1,10 +1,11 @@
 /*
  * viewer for the world.
  */
+
+
 worldscope = paper;
 
 var side_relation = 700/500;
-console.log(side_relation);
 var HEIGHT = 20; // it starts to look super weird with values over 20 and I have no idea why
 var WIDTH = Math.round(side_relation * HEIGHT);
 
@@ -23,6 +24,7 @@ worldRunning = false;
 
 refreshWorldView = function () {
     worldscope.activate();
+    project.activeLayer.removeChildren();
     api.call('get_world_view', {
             world_uid: currentWorld,
             step: currentWorldSimulationStep
