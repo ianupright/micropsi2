@@ -10,10 +10,16 @@ _VIEW_ANGLE = 60
 
 class MinecraftVision(WorldAdapter):
 
-    datasources = {'pixel': 0}
+    datasources = {}
     datatargets = {'orientation': 0}
 
 
+    def __init__(self, world, uid=None, **data):
+        super(MinecraftVision, self).__init__(world, uid, **data)
+
+        for x_pixel in range(-_WIDTH//2, _WIDTH//2):
+            for y_pixel in range(_HEIGHT//2, -_HEIGHT//2, -1):
+                self.datasources['vision_x_' + str(x_pixel) + '_y_' + str(y_pixel)] = 0
 
     def update(self):
         """called on every world simulation step to advance the life of the agent"""
@@ -43,8 +49,7 @@ class MinecraftVision(WorldAdapter):
                     sighted_block = get_voxel_blocktype(self, bot_x + int(distance * math.cos((orientation + x_angle) * 2 * math.pi)), y + int(y_blocks_per_distance * distance), bot_z + int(distance * math.sin((orientation + x_angle) * 2 * math.pi)))
                     distance += 1
                 minecraft_vision_pixel = minecraft_vision_pixel + (structs.block_names[str(sighted_block)],  distance)
-
-        self.datasources['pixel'] = sighted_block
+                self.datasources['vision_x_' + str(x_pixel) + '_y_' + str(y_pixel)] = 1 / distance if sighted_block > 0 else 0
 
 
         if self.world.data['agents'] is None:
