@@ -3,8 +3,9 @@ from micropsi_core.world.minecraft.minecraft_helpers import get_voxel_blocktype
 from micropsi_core.world.minecraft import structs
 import math
 
-_WIDTH = 20
-_HEIGHT = 20
+_SIDE_RELATION = 700/500
+_HEIGHT = 20 # it starts to look super weird with values over 20 and I have no idea why
+_WIDTH = int(_HEIGHT * _SIDE_RELATION)
 _VIEW_ANGLE = 60
 
 class MinecraftVision(WorldAdapter):
@@ -26,8 +27,8 @@ class MinecraftVision(WorldAdapter):
         minecraft_vision_pixel = ()
         sighted_block = 0
 
-        for x_pixel in range(-_HEIGHT//2, _HEIGHT//2):
-            for y_pixel in range(_WIDTH//2, -_WIDTH//2, -1):
+        for x_pixel in range(-_WIDTH//2, _WIDTH//2):
+            for y_pixel in range(_HEIGHT//2, -_HEIGHT//2, -1):
                 x_angle = x_pixel * _VIEW_ANGLE // -_HEIGHT
                 y_angle = y_pixel * _VIEW_ANGLE // -_HEIGHT
                 x_blocks_per_distance = math.tan(x_angle)

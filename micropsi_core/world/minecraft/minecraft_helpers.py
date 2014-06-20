@@ -8,7 +8,10 @@ def get_voxel_blocktype(self, x, y, z):
     current_column = columns[key]
     if len(current_column.chunks) <= y // 16:
         return -1
-    current_section = current_column.chunks[y // 16]
+    try:
+        current_section = current_column.chunks[y // 16]
+    except IndexError:
+        return -1
     if current_section is None:
         return -1
     else:

@@ -3,8 +3,10 @@
  */
 worldscope = paper;
 
-var HEIGHT = 20;
-var WIDTH = 20;
+var side_relation = 700/500;
+console.log(side_relation);
+var HEIGHT = 20; // it starts to look super weird with values over 20 and I have no idea why
+var WIDTH = Math.round(side_relation * HEIGHT);
 
 currentWorld = $.cookie('selected_world') || null;
 
@@ -20,13 +22,11 @@ if (currentWorld) {
 worldRunning = false;
 
 refreshWorldView = function () {
-
     worldscope.activate();
-
     api.call('get_world_view', {
             world_uid: currentWorld,
             step: currentWorldSimulationStep
-        },
+    },
         function (data) {
             if (jQuery.isEmptyObject(data)) {
                 if (worldRunning) {
@@ -36,24 +36,18 @@ refreshWorldView = function () {
             }
             currentWorldSimulationStep = data.current_step;
             for (var key in data.agents) {
-
                 if (data.agents[key].minecraft_vision_pixel) {
                     var minecraft_pixel = data.agents[key].minecraft_vision_pixel;
-
-                    for (var x = 0; x < HEIGHT; x++) {
-
-                        for (var y = 0; y < WIDTH; y++) {
-                            var raster = new Raster('mc_block_img_' + minecraft_pixel[(x + y * HEIGHT) * 2]);
-                            raster.position = new Point(32 * y, 32 * x);
-                            raster.scale(2 * 1 / minecraft_pixel[(x + y * HEIGHT) * 2 + 1]);
-
+                    for (var x = 0; x < WIDTH; x++) {
+                        for (var y = 0; y < HEIGHT; y++) {
+                            var raster = new Raster('mc_block_img_' + minecraft_pixel[(y + x * HEIGHT) * 2]);
+                            raster.position = new Point(world.width/WIDTH * x, world.height/HEIGHT * y);
+                            var distance = minecraft_pixel[(y + x * HEIGHT) * 2 + 1];
+                            raster.scale((world.width/WIDTH) / 64 * (1 / Math.pow(distance, 1/5)), (world.height/HEIGHT) / 64 * (1 / Math.pow(distance, 1/5)));
                         }
                     }
-
-                    break;
-
+                break;
                 }
-
             }
             updateViewSize();
             if (worldRunning) {
