@@ -6,7 +6,7 @@ def get_voxel_blocktype(self, x, y, z):
     if key not in columns:
         return -1
     current_column = columns[key]
-    if y // 16 in current_column.chunks:
+    if len(current_column.chunks) <= y // 16:
         return -1
     current_section = current_column.chunks[y // 16]
     if current_section is None:
