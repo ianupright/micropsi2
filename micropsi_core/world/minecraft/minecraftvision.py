@@ -11,7 +11,7 @@ _VIEW_ANGLE = 60
 class MinecraftVision(WorldAdapter):
 
     datasources = {'pixel': 0}
-    datatargets = {}
+    datatargets = {'orientation': 0}
 
 
 
@@ -27,16 +27,20 @@ class MinecraftVision(WorldAdapter):
         minecraft_vision_pixel = ()
         sighted_block = 0
 
+        orientation = self.datatargets['orientation'] # x_axis + 360 / orientation  degrees
+        print("orientation is " + str(orientation))
+
         for x_pixel in range(-_WIDTH//2, _WIDTH//2):
             for y_pixel in range(_HEIGHT//2, -_HEIGHT//2, -1):
                 x_angle = x_pixel * _VIEW_ANGLE // -_HEIGHT
+                x_angle = x_angle / 360
                 y_angle = y_pixel * _VIEW_ANGLE // -_HEIGHT
-                x_blocks_per_distance = math.tan(x_angle)
+                #x_blocks_per_distance = math.tan(x_angle)
                 y_blocks_per_distance = math.tan(y_angle)
                 sighted_block = 0
                 distance = 0
                 while sighted_block == 0:
-                    sighted_block = get_voxel_blocktype(self, bot_x + distance, y + int(y_blocks_per_distance * distance), int(x_blocks_per_distance * distance) + bot_z)
+                    sighted_block = get_voxel_blocktype(self, bot_x + int(distance * math.cos((orientation + x_angle) * 2 * math.pi)), y + int(y_blocks_per_distance * distance), bot_z + int(distance * math.sin((orientation + x_angle) * 2 * math.pi)))
                     distance += 1
                 minecraft_vision_pixel = minecraft_vision_pixel + (structs.block_names[str(sighted_block)],  distance)
 
