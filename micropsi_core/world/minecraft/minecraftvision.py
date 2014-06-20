@@ -35,10 +35,8 @@ class MinecraftVision(WorldAdapter):
                 sighted_block = 0
                 distance = 0
                 while sighted_block == 0:
-                    #print("y + int(y_blocks_per_distance * distance) is " + str(y + int(y_blocks_per_distance * distance)))
                     sighted_block = get_voxel_blocktype(self, bot_x + distance, y + int(y_blocks_per_distance * distance), int(x_blocks_per_distance * distance) + bot_z)
                     distance += 1
-                print("found " + structs.block_names[str(sighted_block)] + " at " + str((bot_x + distance, y + int(y_blocks_per_distance * distance), int(x_blocks_per_distance * distance) + bot_z)))
                 minecraft_vision_pixel = minecraft_vision_pixel + (structs.block_names[str(sighted_block)],  distance)
 
         self.datasources['pixel'] = sighted_block
