@@ -6,10 +6,6 @@ worldscope = paper;
 var HEIGHT = 20;
 var WIDTH = 20;
 
-objects = {};
-symbols = {};
-agents = {};
-
 currentWorld = $.cookie('selected_world') || null;
 
 objectLayer = new Layer();
@@ -25,9 +21,7 @@ worldRunning = false;
 
 refreshWorldView = function () {
 
-
     worldscope.activate();
-    var minecraft_pixel;
 
     api.call('get_world_view', {
             world_uid: currentWorld,
@@ -41,25 +35,17 @@ refreshWorldView = function () {
                 return null;
             }
             currentWorldSimulationStep = data.current_step;
-            $('#world_step').val(currentWorldSimulationStep);
-            $('#world_status').val(data.status_message);
-            // treat agents and objects the same
             for (var key in data.agents) {
 
-
-
                 if (data.agents[key].minecraft_vision_pixel) {
-                    minecraft_pixel = data.agents[key].minecraft_vision_pixel;
+                    var minecraft_pixel = data.agents[key].minecraft_vision_pixel;
 
-                    var height = HEIGHT;
-                    var width = WIDTH;
+                    for (var x = 0; x < HEIGHT; x++) {
 
-                    for (var x = 0; x < height; x++) {
-
-                        for (var y = 0; y < width; y++) {
-                            var raster = new Raster('mc_block_img_' + minecraft_pixel[(x + y * height) * 2]);
+                        for (var y = 0; y < WIDTH; y++) {
+                            var raster = new Raster('mc_block_img_' + minecraft_pixel[(x + y * HEIGHT) * 2]);
                             raster.position = new Point(32 * y, 32 * x);
-                            raster.scale(2 * 1 / minecraft_pixel[(x + y * height) * 2 + 1]);
+                            raster.scale(2 * 1 / minecraft_pixel[(x + y * HEIGHT) * 2 + 1]);
 
                         }
                     }
