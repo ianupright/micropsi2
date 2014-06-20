@@ -4,7 +4,7 @@ from micropsi_core.world.minecraft import structs
 import math
 
 _SIDE_RELATION = 700/500
-_HEIGHT = 20 # it starts to look super weird with values over 20 and I have no idea why
+_HEIGHT = 10 # it starts to look super weird with values over 20 and I have no idea why
 _WIDTH = int(_HEIGHT * _SIDE_RELATION)
 _VIEW_ANGLE = 60
 
@@ -34,7 +34,6 @@ class MinecraftVision(WorldAdapter):
         sighted_block = 0
 
         orientation = self.datatargets['orientation'] # x_axis + 360 / orientation  degrees
-        print("orientation is " + str(orientation))
 
         for x_pixel in range(-_WIDTH//2, _WIDTH//2):
             for y_pixel in range(_HEIGHT//2, -_HEIGHT//2, -1):
