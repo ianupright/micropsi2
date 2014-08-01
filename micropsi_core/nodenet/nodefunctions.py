@@ -111,11 +111,11 @@ def pipe(netapi, node=None, sheaf="default", **params):
     gen += node.get_slot("exp").get_activation(sheaf)
     if gen > 1: gen = 1
 
-    sub += max(node.get_slot("sur").get_activation(sheaf), 0)
     sub += node.get_slot("sub").get_activation(sheaf)
     sub *= 0 if node.get_slot("por").get_activation(sheaf) < 0 else 1
     sub *= 0 if node.get_slot("gen").get_activation(sheaf) > 0 else 1
-    if sub > 0: sub = 1
+    sub += max(node.get_slot("sur").get_activation(sheaf), 0)
+    if sub > 1: sub = 1
 
     sur += node.get_slot("sur").get_activation(sheaf)
     if sur == 0: sur += node.get_slot("sur").get_activation("default")      # no activation in our sheaf, maybe from sensors?
