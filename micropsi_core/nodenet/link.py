@@ -5,10 +5,10 @@ Link definition
 """
 
 import micropsi_core.tools
+from micropsi_core.nodenet.netentity import *
 
 __author__ = 'joscha'
 __date__ = '09.05.12'
-
 
 class Link(object):
     """A link between two nodes, starting from a gate and ending in a slot.
@@ -50,7 +50,7 @@ class Link(object):
 
     @property
     def source_gate(self):
-        return self.source_node.gates.get(self.data.get("source_gate_name"))
+        return self.source_node.get_gate(self.data.get("source_gate_name"))
 
     @source_gate.setter
     def source_gate(self, gate):
@@ -66,7 +66,7 @@ class Link(object):
 
     @property
     def target_slot(self):
-        return self.target_node.slots.get(self.data.get("target_slot_name"))
+        return self.target_node.get_slot(self.data.get("target_slot_name"))
 
     @target_slot.setter
     def target_slot(self, slot):

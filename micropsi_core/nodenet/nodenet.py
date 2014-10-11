@@ -10,11 +10,11 @@ import json
 import os
 
 import warnings
-from .node import Node, Nodetype, SheafElement, STANDARD_NODETYPES
+from .node import *
 from threading import Lock
 import logging
-from .nodespace import Nodespace
-from .link import Link
+from .nodespace import *
+from .link import *
 from .monitor import Monitor
 
 __author__ = 'joscha'
@@ -46,6 +46,8 @@ class Nodenet(object):
         owner: an id of the user who created the node net
         step: the current simulation step of the node net
     """
+
+    container = None
 
     @property
     def uid(self):
@@ -101,7 +103,7 @@ class Nodenet(object):
     def is_active(self, is_active):
         self.state['is_active'] = is_active
 
-    def __init__(self, filename, name="", worldadapter="Default", world=None, owner="", uid=None, nodetypes={}, native_modules={}):
+    def init(self, filename, name="", worldadapter="Default", world=None, owner="", uid=None, nodetypes={}, native_modules={}):
         """Create a new MicroPsi agent.
 
         Arguments:
@@ -133,6 +135,7 @@ class Nodenet(object):
             self.worldadapter = worldadapter
 
         self.nodes = {}
+        self.nodeData = {}
         self.links = {}
         self.nodetypes = nodetypes
         self.native_modules = native_modules
@@ -152,9 +155,13 @@ class Nodenet(object):
 
         self.load()
 
+    def beforeload(self):
+        return
+
     def load(self, string=None):
         """Load the node net from a file"""
         # try to access file
+        self.beforeload()
         with self.netlock:
             if string:
                 self.logger.info("Loading nodenet %s from string", self.name)
@@ -181,12 +188,19 @@ class Nodenet(object):
                 warnings.warn("Wrong version of the nodenet data; starting new nodenet")
                 return False
 
+    def unload(self):
+        self.beforeunload()
+
+    def beforeunload(self):
+        if self.world:
+            self.world.unregister_nodenet(self.uid)
+
     def initialize_nodespace(self, id, data):
         if id not in self.nodespaces:
             # move up the nodespace tree until we find an existing parent or hit root
             while id != 'Root' and data[id].get('parent_nodespace') not in self.nodespaces:
                 self.initialize_nodespace(data[id]['parent_nodespace'], data)
-            self.nodespaces[id] = Nodespace(self,
+            self.nodespaces[id] = Nodespace_class().new(self,
                 data[id].get('parent_nodespace'),
                 data[id].get('position'),
                 name=data[id].get('name', 'Root'),
@@ -220,13 +234,13 @@ class Nodenet(object):
 
         nodespaces_to_initialize = []
         if not self.nodespaces:
-            self.nodespaces["Root"] = Nodespace(self, None, (0, 0), name="Root", uid="Root")
+            self.nodespaces["Root"] = Nodespace_class().new(self, None, (0, 0), name="Root", uid="Root")
 
         # set up nodes
         for uid in self.state.get('nodes', {}):
             data = self.state['nodes'][uid]
             if data['type'] in nodetypes or data['type'] in native_modules:
-                self.nodes[uid] = Node(self, **data)
+                self.nodes[uid] = Node_class().new(self, **data)
                 pos = self.nodes[uid].position
                 xpos = int(pos[0] - (pos[0] % 100))
                 ypos = int(pos[1] - (pos[1] % 100))
@@ -245,14 +259,16 @@ class Nodenet(object):
         for uid in self.state.get('links', {}):
             data = self.state['links'][uid]
             if data['source_node_uid'] in self.nodes and \
-                    data['source_gate_name'] in self.nodes[data['source_node_uid']].gates and\
+                    data['source_gate_name'] in self.nodes[data['source_node_uid']].get_gate_types() and\
                     data['target_node_uid'] in self.nodes and\
-                    data['target_slot_name'] in self.nodes[data['target_node_uid']].slots:
-                self.links[uid] = Link(
-                    self.nodes[data['source_node_uid']], data['source_gate_name'],
-                    self.nodes[data['target_node_uid']], data['target_slot_name'],
-                    weight=data['weight'], certainty=data['certainty'],
-                    uid=uid)
+                    data['target_slot_name'] in self.nodes[data['target_node_uid']].get_slot_types():
+                self.create_link( data['source_node_uid'], data['source_gate_name'],
+                    data['target_node_uid'], data['target_slot_name'], data['weight'], data['certainty'])
+                # self.links[uid] = Link(
+                #     self.nodes[data['source_node_uid']], data['source_gate_name'],
+                #     self.nodes[data['target_node_uid']], data['target_slot_name'],
+                #     weight=data['weight'], certainty=data['certainty'],
+                #     uid=uid)
             else:
                 warnings.warn("Slot or gatetype for link %s invalid" % uid)
         for uid in self.state.get('monitors', {}):
@@ -334,16 +350,21 @@ class Nodenet(object):
             del self.state['nodespaces'][node_uid]
         else:
             link_uids = []
-            for key, gate in self.nodes[node_uid].gates.items():
-                link_uids.extend(gate.outgoing.keys())
-            for key, slot in self.nodes[node_uid].slots.items():
-                link_uids.extend(slot.incoming.keys())
-            for uid in link_uids:
-                if uid in self.links:
-                    self.links[uid].remove()
-                    del self.links[uid]
-                if uid in self.state['links']:
-                    del self.state['links'][uid]
+            self.nodes[node_uid].unlink_all()
+
+            # for gate_type in self.nodes[node_uid].get_gate_types():
+            #     gate =  self.nodes[node_uid].get_gate(gate_type)
+            #     link_uids.extend(gate.outgoing.keys())
+            # for slotname in self.nodes[node_uid].get_slot_types():
+            #     slot = self.nodes[node_uid].get_slot(slotname)
+            #     link_uids.extend(slot.incoming.keys())
+            # for uid in link_uids:
+            #     if uid in self.links:
+            #         self.links[uid].remove()
+            #         del self.links[uid]
+            #     if uid in self.state['links']:
+            #         del self.state['links'][uid]
+
             parent_nodespace = self.nodespaces.get(self.nodes[node_uid].parent_nodespace)
             parent_nodespace.netentities["nodes"].remove(node_uid)
             if self.nodes[node_uid].type == "Activator":
@@ -425,7 +446,7 @@ class Nodenet(object):
             original = nodespaces[nodespace_uid]
             uid = rename_nodespaces.get(nodespace_uid, nodespace_uid)
 
-            Nodespace(self, target_nodespace,
+            Nodespace_class().new(self, target_nodespace,
                 position=original.position,
                 name=original.name,
                 gatefunctions=deepcopy(original.gatefunctions),
@@ -450,7 +471,7 @@ class Nodenet(object):
             target = original.parent_nodespace if original.parent_nodespace in nodespaces else target_nodespace
             target = rename_nodespaces.get(target, target)
 
-            Node(self, target,
+            Node_class().new(self, target,
                 position=original.position,
                 name=original.name,
                 type=original.type,
@@ -465,15 +486,17 @@ class Nodenet(object):
             origin_links = nodes[list(nodes.keys())[0]].nodenet.links
             for node_uid in nodes:
                 node = nodes[node_uid]
-                for slot in node.slots:
-                    for l in node.slots[slot].incoming:
+                for slotname in node.get_slot_types():
+                    slot = node.get_slot(slotname)
+                    for l in slot.incoming:
                         link = origin_links[l]
                         if link.source_node.uid in nodes or (copy_associated_links
                                                              and link.source_node.uid in self.nodes):
                             if not l in links:
                                 links[l] = link
-                for gate in node.gates:
-                    for l in node.gates[gate].outgoing:
+                for gate_type in node.get_gate_types():
+                    gate = node.get_gate(gate_type)
+                    for l in gate.outgoing:
                         link = origin_links[l]
                         if link.target_node.uid in nodes or (copy_associated_links
                                                              and link.target_node.uid in self.nodes):
@@ -539,26 +562,27 @@ class Nodenet(object):
         # propagate sheaf existence
         for uid, node in nodes.items():
             if limit_gatetypes is not None:
-                gates = [(name, gate) for name, gate in node.gates.items() if name in limit_gatetypes]
+                gates = [ (name) for name in node.gates.items() if name in limit_gatetypes]
             else:
-                gates = node.gates.items()
-            for type, gate in gates:
+                gates = node.get_gate_types()
+            for gate_type in gates:
+                gate = node.get_gate(gate_type)
                 if gate.parameters['spreadsheaves'] is True:
                     for sheaf in gate.sheaves.keys():
-                        for uid, link in gate.outgoing.items():
-                            for slotname in link.target_node.slots.keys():
+                        for link in gate.outgoing:
+                            for slotname in link.target_node.get_slot_types():
                                 if sheaf not in link.target_node.get_slot(slotname).sheaves:
                                     link.target_node.get_slot(slotname).sheaves[sheaf] = SheafElement(uid=gate.sheaves[sheaf].uid, name=gate.sheaves[sheaf].name)
 
         # propagate activation
         for uid, node in nodes.items():
             if limit_gatetypes is not None:
-                gates = [(name, gate) for name, gate in node.gates.items() if name in limit_gatetypes]
+                gates = [(name) for name in node.gates.items() if name in limit_gatetypes]
             else:
-                gates = node.gates.items()
-
-            for type, gate in gates:
-                for uid, link in gate.outgoing.items():
+                gates = node.get_gate_types()
+            for gate_type in gates:
+                gate = node.get_gate(gate_type)
+                for link in gate.outgoing:
                     for sheaf in gate.sheaves.keys():
                         if sheaf in link.target_slot.sheaves:
                             link.target_slot.sheaves[sheaf].activation += float(gate.sheaves[sheaf].activation) * float(link.weight)  # TODO: where's the string coming from?
@@ -648,7 +672,7 @@ class Nodenet(object):
         self.links[link_uid].certainty = certainty
         return True
 
-    def create_link(self, source_node_uid, gate_type, target_node_uid, slot_type, weight=1, certainty=1, uid=None):
+    def create_link(self, source_node_uid, gate_type, target_node_uid, slot_type, weight=1, certainty=1):
         """Creates a new link.
 
         Arguments.
@@ -666,30 +690,38 @@ class Nodenet(object):
         """
 
         # check if link already exists
-        existing_uid = self.get_link_uid(
-            source_node_uid, gate_type,
-            target_node_uid, slot_type)
-        if existing_uid:
-            self.set_link_weight(existing_uid, weight, certainty)
-            link = self.links[existing_uid]
-        else:
-            link = Link(
-                self.nodes[source_node_uid],
-                gate_type,
-                self.nodes[target_node_uid],
-                slot_type,
-                weight=weight,
-                certainty=certainty,
-                uid=uid)
-            self.links[link.uid] = link
-        return True, link.uid
+        # existing_uid = self.get_link_uid(
+        #     source_node_uid, gate_type,
+        #     target_node_uid, slot_type)
+        # if existing_uid:
+        #     self.set_link_weight(existing_uid, weight, certainty)
+        #     link = self.links[existing_uid]
+        # else:
+        #     link = Link(
+        #         self.nodes[source_node_uid],
+        #         gate_type,
+        #         self.nodes[target_node_uid],
+        #         slot_type,
+        #         weight=weight,
+        #         certainty=certainty,
+        #         )
+        #     self.links[link.uid] = link
 
-    def delete_link(self, link_uid):
-        """Delete the given link."""
-        self.links[link_uid].remove()
-        del self.links[link_uid]
-        del self.state['links'][link_uid]
+        source_node = self.nodes[source_node_uid]
+        target_node = self.nodes[target_node_uid]
+
+        source_node.set_link_weight( gate_type, target_node, slot_type, weight )
+        source_node.set_link_certainty( gate_type, target_node, slot_type, certainty )
+        target_node.add_slot_link( slot_type, source_node, gate_type )
+
         return True
+
+    # def delete_link(self, link_uid):
+    #     """Delete the given link."""
+    #     self.links[link_uid].remove()
+    #     del self.links[link_uid]
+    #     del self.state['links'][link_uid]
+    #     return True
 
     def is_locked(self, lock):
         """Returns true if a lock of the given name exists"""
@@ -769,12 +801,13 @@ class NetAPI(object):
         if gate is not None:
             gates.append(gate)
         else:
-            gates.extend(self.__nodenet.nodes[node.uid].gates.keys())
+            gates.extend(self.__nodenet.nodes[node.uid].get_gate_types())
         for gate in gates:
-            for link_uid, link in self.__nodenet.nodes[node.uid].get_gate(gate).outgoing.items():
+            for link in self.__nodenet.nodes[node.uid].get_gate(gate).outgoing:
                 candidate = link.target_node
                 linked_gates = []
-                for candidate_gate_name, candidate_gate in candidate.gates.items():
+                for candidate_gate_name in candidate.get_gate_types():
+                    candidate_gate = candidate.get_gate(candidate_gate_name)
                     if len(candidate_gate.outgoing) > 0:
                         linked_gates.append(candidate_gate_name)
                 if ((nodespace is None or nodespace == link.target_node.parent_nodespace) and
@@ -792,12 +825,13 @@ class NetAPI(object):
         if slot is not None:
             slots.append(slot)
         else:
-            slots.extend(self.__nodenet.nodes[node.uid].slots.keys())
+            slots.extend(self.__nodenet.nodes[node.uid].get_slot_types())
         for slot in slots:
-            for link_uid, link in self.__nodenet.nodes[node.uid].get_slot(slot).incoming.items():
+            for link in self.__nodenet.nodes[node.uid].get_slot(slot).incoming:
                 candidate = link.source_node
                 linked_gates = []
-                for candidate_gate_name, candidate_gate in candidate.gates.items():
+                for candidate_gate_name in candidate.get_gate_types():
+                    candidate_gate = candidate.get_gate(candidate_gate_name)
                     if len(candidate_gate.outgoing) > 0:
                         linked_gates.append(candidate_gate_name)
                 if ((nodespace is None or nodespace == link.source_node.parent_nodespace) and
@@ -813,7 +847,7 @@ class NetAPI(object):
         for node in self.get_nodes(nodespace):
             if type is None or node.type == type:
                 if gate is not None:
-                    if gate in node.gates:
+                    if gate in node.get_gate_types():
                         if node.get_gate(gate).sheaves[sheaf].activation >= min_activation:
                             nodes.append(node)
                 else:
@@ -836,9 +870,9 @@ class NetAPI(object):
             name = ""   #TODO: empty names crash the client right now, but really shouldn't
         pos = (self.__nodenet.max_coords['x'] + 50, 100)  # default so native modules will not be bothered with positions
         if nodetype == "Nodespace":
-            entity = Nodespace(self.__nodenet, nodespace, pos, name=name)
+            entity = Nodespace_class().new(self.__nodenet, nodespace, pos, name=name)
         else:
-            entity = Node(self.__nodenet, nodespace, pos, name=name, type=nodetype)
+            entity = Node_class().new(self.__nodenet, nodespace, pos, name=name, type=nodetype)
         self.__nodenet.update_node_positions()
         return entity
 
@@ -854,23 +888,23 @@ class NetAPI(object):
         Creates two (reciprocal) links between two nodes, valid linktypes are subsur, porret, catexp and symref
         """
         if linktype == "subsur":
-            subslot = "sub" if "sub" in target_node.slots else "gen"
-            surslot = "sur" if "sur" in source_node.slots else "gen"
+            subslot = "sub" if "sub" in target_node.get_slot_types() else "gen"
+            surslot = "sur" if "sur" in source_node.get_slot_types() else "gen"
             self.__nodenet.create_link(source_node.uid, "sub", target_node.uid, subslot, weight, certainty)
             self.__nodenet.create_link(target_node.uid, "sur", source_node.uid, surslot, weight, certainty)
         elif linktype == "porret":
-            porslot = "por" if "por" in target_node.slots else "gen"
-            retslot = "ret" if "ret" in source_node.slots else "gen"
+            porslot = "por" if "por" in target_node.get_slot_types() else "gen"
+            retslot = "ret" if "ret" in source_node.get_slot_types() else "gen"
             self.__nodenet.create_link(source_node.uid, "por", target_node.uid, porslot, weight, certainty)
             self.__nodenet.create_link(target_node.uid, "ret", source_node.uid, retslot, weight, certainty)
         elif linktype == "catexp":
-            catslot = "cat" if "cat" in target_node.slots else "gen"
-            expslot = "exp" if "exp" in source_node.slots else "gen"
+            catslot = "cat" if "cat" in target_node.get_slot_types() else "gen"
+            expslot = "exp" if "exp" in source_node.get_slot_types() else "gen"
             self.__nodenet.create_link(source_node.uid, "cat", target_node.uid, catslot, weight, certainty)
             self.__nodenet.create_link(target_node.uid, "exp", source_node.uid, expslot, weight, certainty)
         elif linktype == "symref":
-            symslot = "sym" if "sym" in target_node.slots else "gen"
-            refslot = "ref" if "ref" in source_node.slots else "gen"
+            symslot = "sym" if "sym" in target_node.get_slot_types() else "gen"
+            refslot = "ref" if "ref" in source_node.get_slot_types() else "gen"
             self.__nodenet.create_link(source_node.uid, "sym", target_node.uid, symslot, weight, certainty)
             self.__nodenet.create_link(target_node.uid, "ref", source_node.uid, refslot, weight, certainty)
 
@@ -887,16 +921,32 @@ class NetAPI(object):
         """
         Deletes a link, or links, originating from the given node
         """
-        links_to_delete = []
-        for gatetype, gateobject in source_node.gates.items():
-            if source_gate is None or source_gate == gatetype:
-                for linkid, link in gateobject.outgoing.items():
-                    if target_node is None or target_node.uid == link.target_node.uid:
-                        if target_slot is None or target_slot == link.target_slot.type:
-                            links_to_delete.append(linkid)
 
-        for uid in links_to_delete:
-            self.__nodenet.delete_link(uid)
+        #possibly oversimplified for now
+
+        if source_gate is None:
+            source_node.unlink_all_gates()
+            return
+
+        if target_node is None:
+            source_node.unlink_gate(source_gate)
+        else:
+            source_node.unlink(source_gate, target_node, target_slot)
+
+        # links_to_delete = []
+        # for gatetype in source_node.get_gate_types():
+        #     if source_gate is None or source_gate == gatetype:
+        #         source_node.remove_gate_link_data(source_gate, target_slot, target_node)
+        #         if target_node:
+        #             target_node.remove_slot_link(target_slot, source_gate, source_node)
+                # gateobject = source_node.get_gate(gatetype)
+                # for linkid, link in gateobject.outgoing.items():
+                #     if target_node is None or target_node.uid == link.target_node.uid:
+                #         if target_slot is None or target_slot == link.target_slot.type:
+                #             links_to_delete.append(linkid)
+
+        #for uid in links_to_delete:
+            #self.__nodenet.delete_link(uid)
 
     def link_actor(self, node, datatarget, weight=1, certainty=1, gate='sub', slot='sur'):
         """
@@ -1047,7 +1097,7 @@ class NetAPI(object):
             netapi.ask_user_for_parameter(node, "Please decide what to do next", options)
         """
         self.__nodenet.user_prompt = {
-            'node': node.data,
+            'node': node.get_data(),
             'msg': msg,
             'options': options
         }

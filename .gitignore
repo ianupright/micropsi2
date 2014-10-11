@@ -1,3 +1,4 @@
+*~
 /.idea/
 /bin/
 /downloads/
@@ -17,3 +18,9 @@
 .DS_Store
 /config.ini
 /.Python
+pyvenv.cfg
+lib64
+*.dat
+*.tmp
+*.csv
+debug.txt

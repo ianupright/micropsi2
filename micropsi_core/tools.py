@@ -10,6 +10,27 @@ __date__ = '29.06.12'
 
 import uuid
 import os
+import json
+
+class NetEntityDataProxy(object):
+
+    proxyEntity = None
+
+    def __getitem__(self, item):
+        return self.proxyEntity.get_data_property(item)
+
+    def __len__(self):
+        self.proxyEntity.get_data().__len__
+
+    def __init__(self, proxy):
+        self.proxyEntity = proxy
+
+
+class NetEntityEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if not isinstance(obj, NetEntityDataProxy):
+            return super(NetEntityEncoder, self).default(obj)
+        return obj.proxyEntity.get_data()
 
 def generate_uid():
     """produce a unique identifier, restricted to an ASCII string"""

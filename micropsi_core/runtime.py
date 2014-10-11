@@ -14,13 +14,14 @@ __date__ = '10.05.12'
 
 from configuration import RESOURCE_PATH, SERVER_SETTINGS_PATH, LOGGING
 
-from micropsi_core.nodenet.node import Node, Nodetype, STANDARD_NODETYPES
-from micropsi_core.nodenet.nodenet import Nodenet
-from micropsi_core.nodenet.nodespace import Nodespace
+from micropsi_core.nodenet.node import *
+from micropsi_core.nodenet.nodenet import *
+from micropsi_core.nodenet.nodespace import *
 
 from micropsi_core.nodenet import node_alignment
 from micropsi_core import config
 from micropsi_core.tools import Bunch
+from micropsi_core.tools import NetEntityEncoder
 import os
 import sys
 from micropsi_core import tools
@@ -186,11 +187,9 @@ def get_available_nodenets(owner=None):
     else:
         return nodenet_data
 
-
 def get_nodenet(nodenet_uid):
     """Returns the nodenet with the given uid, and loads into memory if necessary.
     Returns None if nodenet does not exist"""
-
     if nodenet_uid not in nodenets:
         if nodenet_uid in get_available_nodenets():
             load_nodenet(nodenet_uid)
@@ -198,6 +197,13 @@ def get_nodenet(nodenet_uid):
             return None
     return nodenets[nodenet_uid]
 
+
+def get_nodenet_or_none(nodenet_uid):
+    """Returns the nodenet with the given uid, and loads into memory if necessary.
+    Returns None if nodenet does not exist"""
+    if nodenet_uid not in nodenets:
+        return None
+    return nodenets[nodenet_uid]
 
 def load_nodenet(nodenet_uid):
     """ Load the nodenet with the given uid into memeory
@@ -220,7 +226,9 @@ def load_nodenet(nodenet_uid):
                 if data.world in worlds:
                     world = worlds.get(data.world)
                     worldadapter = data.get('worldadapter')
-            nodenets[nodenet_uid] = Nodenet(
+            nodenet = Nodenet()
+            nodenets[nodenet_uid] = nodenet
+            nodenet.init(
                 os.path.join(RESOURCE_PATH, NODENET_DIRECTORY,  nodenet_uid + '.json'),
                 name=data.name, worldadapter=worldadapter,
                 world=world, owner=data.owner, uid=data.uid,
@@ -232,7 +240,6 @@ def load_nodenet(nodenet_uid):
             world.register_nodenet(worldadapter, nodenets[nodenet_uid])
         return True, nodenet_uid
     return False, "Nodenet "+nodenet_uid+" not found in "+RESOURCE_PATH
-
 
 def get_nodenet_data(nodenet_uid, **coordinates):
     """ returns the current state of the nodenet """
@@ -256,11 +263,9 @@ def unload_nodenet(nodenet_uid):
     """
     if not nodenet_uid in nodenets:
         return False
-    if nodenets[nodenet_uid].world:
-        nodenets[nodenet_uid].world.unregister_nodenet(nodenet_uid)
+    nodenets[nodenet_uid].unload()
     del nodenets[nodenet_uid]
     return True
-
 
 def get_nodenet_area(nodenet_uid, nodespace="Root", x1=0, x2=-1, y1=0, y2=-1):
     """ returns part of the nodespace for representation in the UI
@@ -315,7 +320,7 @@ def new_nodenet(nodenet_name, worldadapter, template=None, owner="", world_uid=N
     filename = os.path.join(RESOURCE_PATH, NODENET_DIRECTORY, data['uid'] + ".json")
     nodenet_data[data['uid']] = Bunch(**data)
     with open(filename, 'w+') as fp:
-        fp.write(json.dumps(data, sort_keys=True, indent=4))
+        fp.write(json.dumps(data, cls=NetEntityEncoder, sort_keys=True, indent=4))
     fp.close()
     #load_nodenet(data['uid'])
     return True, data['uid']
@@ -419,7 +424,7 @@ def save_nodenet(nodenet_uid):
     """Stores the nodenet on the server (but keeps it open)."""
     nodenet = nodenets[nodenet_uid]
     with open(os.path.join(RESOURCE_PATH, NODENET_DIRECTORY, nodenet_uid + '.json'), 'w+') as fp:
-        fp.write(json.dumps(nodenet.state, sort_keys=True, indent=4))
+        fp.write(json.dumps(nodenet.state, cls=NetEntityEncoder, sort_keys=True, indent=4))
     fp.close()
     return True
 
@@ -429,7 +434,7 @@ def export_nodenet(nodenet_uid):
 
     Returns a string that contains the nodenet state in JSON format.
     """
-    return json.dumps(nodenets[nodenet_uid].state, sort_keys=True, indent=4)
+    return json.dumps(nodenets[nodenet_uid].state, cls=NetEntityEncoder, sort_keys=True, indent=4)
 
 
 def import_nodenet(string, owner=None):
@@ -448,7 +453,7 @@ def import_nodenet(string, owner=None):
     # assert import_data['world'] in worlds
     filename = os.path.join(RESOURCE_PATH, NODENET_DIRECTORY, import_data['uid'] + '.json')
     with open(filename, 'w+') as fp:
-        fp.write(json.dumps(import_data))
+        fp.write(json.dumps(import_data,cls=NetEntityEncoder,))
     fp.close()
     nodenet_data[import_data['uid']] = parse_definition(import_data, filename)
     return True
@@ -524,7 +529,7 @@ def get_nodespace_list(nodenet_uid):
                 'gates': nodenet.get_nodetype(nodenet.nodes[nid].type).gatetypes,
                 'slots': nodenet.get_nodetype(nodenet.nodes[nid].type).slottypes
             }
-        data[uid]['gatefunctions'] = nodespace.data.get('gatefunctions', {})
+        data[uid]['gatefunctions'] = nodespace.gatefunctions
     return data
 
 
@@ -579,10 +584,10 @@ def add_node(nodenet_uid, type, pos, nodespace="Root", state=None, uid=None, nam
     """
     nodenet = get_nodenet(nodenet_uid)
     if type == "Nodespace":
-        nodespace = Nodespace(nodenet, nodespace, pos, name=name, uid=uid)
+        nodespace = Nodespace_class().new(nodenet, nodespace, pos, name=name, uid=uid)
         uid = nodespace.uid
     else:
-        node = Node(nodenet, nodespace, pos, name=name, type=type, uid=uid, parameters=parameters)
+        node = Node.new(nodenet, nodespace, pos, name=name, type=type, uid=uid, parameters=parameters)
         uid = node.uid
         nodenet.update_node_positions()
     return True, uid
@@ -763,9 +768,13 @@ def bind_datatarget_to_actor(nodenet_uid, actor_uid, datatarget):
         return True
     return False
 
+def get_link(nodenet_uid, source_node_uid, gate_type, target_node_uid, slot_type ):
+    nodenet = nodenets[nodenet_uid]
+    source_node = nodenet.nodes[source_node_uid]
+    target_node = nodenet.nodes[target_node_uid]
+    return source_node.get_gate_link(gate_type,target_node,slot_type).get_data()
 
-def add_link(nodenet_uid, source_node_uid, gate_type, target_node_uid, slot_type, weight=1, certainty=1,
-             uid=None):
+def add_link(nodenet_uid, source_node_uid, gate_type, target_node_uid, slot_type, weight=1, certainty=1, uid=None):
     """Creates a new link.
 
     Arguments.
@@ -782,7 +791,7 @@ def add_link(nodenet_uid, source_node_uid, gate_type, target_node_uid, slot_type
         None if failure
     """
     nodenet = nodenets[nodenet_uid]
-    nodenet.create_link(source_node_uid, gate_type, target_node_uid, slot_type, weight, certainty, uid)
+    nodenet.create_link(source_node_uid, gate_type, target_node_uid, slot_type, weight, certainty )
     return True
 
 
@@ -790,23 +799,6 @@ def set_link_weight(nodenet_uid, link_uid, weight, certainty=1):
     """Set weight of the given link."""
     nodenet = nodenets[nodenet_uid]
     return nodenet.set_link_weight(link_uid, weight, certainty)
-
-
-def get_link(nodenet_uid, link_uid):
-    """Returns a dictionary of the parameters of the given link, or None if it does not exist. It is
-    structured as follows:
-
-        {
-            uid: unique identifier,
-            source_node_uid: uid of source node,
-            gate_type: type of source gate (amounts to link type),
-            target_node_uid: uid of target node,
-            gate_type: type of target gate,
-            weight: weight of the link (float value),
-            certainty: probabilistic weight of the link (float value),
-        }
-    """
-    return nodenets[nodenet_uid].links[link_uid]
 
 
 def delete_link(nodenet_uid, link_uid):
@@ -879,7 +871,7 @@ def load_definitions():
         filename = os.path.join(RESOURCE_PATH, WORLD_DIRECTORY, uid + '.json')
         world_data[uid] = Bunch(uid=uid, name="default", version=1, filename=filename)
         with open(filename, 'w+') as fp:
-            fp.write(json.dumps(world_data[uid], sort_keys=True, indent=4))
+            fp.write(json.dumps(world_data[uid], cls=NetEntityEncoder, sort_keys=True, indent=4))
         fp.close()
     return nodenet_data, world_data
 
@@ -961,3 +953,4 @@ add_signal_handler(kill_runners)
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
+from micropsi_core.strongcore_micropsi import *

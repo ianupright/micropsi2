@@ -9,6 +9,7 @@ import os
 import micropsi_core
 from micropsi_core import tools
 from micropsi_core.tools import Bunch
+from micropsi_core.tools import NetEntityEncoder
 from micropsi_core.world import world
 
 __author__ = 'joscha'
@@ -105,7 +106,7 @@ def new_world(world_name, world_type, owner=""):
                                                   version=1,
                                                   owner=owner)
     with open(filename, 'w+') as fp:
-        fp.write(json.dumps(micropsi_core.runtime.world_data[uid], sort_keys=True, indent=4))
+        fp.write(json.dumps(micropsi_core.runtime.world_data[uid], cls=NetEntityEncoder, sort_keys=True, indent=4))
     fp.close()
     try:
         kwargs = micropsi_core.runtime.world_data[uid]
@@ -191,14 +192,14 @@ def save_world(world_uid):
     """Stores the world state on the server."""
     with open(os.path.join(micropsi_core.runtime.RESOURCE_PATH, micropsi_core.runtime.WORLD_DIRECTORY,
                            world_uid) + '.json', 'w+') as fp:
-        fp.write(json.dumps(micropsi_core.runtime.worlds[world_uid].data, sort_keys=True, indent=4))
+        fp.write(json.dumps(micropsi_core.runtime.worlds[world_uid].data, cls=NetEntityEncoder, sort_keys=True, indent=4))
     fp.close()
     return True
 
 
 def export_world(world_uid):
     """Returns a JSON string with the current state of the world."""
-    return json.dumps(micropsi_core.runtime.worlds[world_uid].data, sort_keys=True, indent=4)
+    return json.dumps(micropsi_core.runtime.worlds[world_uid].data, cls=NetEntityEncoder, sort_keys=True, indent=4)
 
 
 def import_world(worlddata, owner=None):
@@ -211,7 +212,7 @@ def import_world(worlddata, owner=None):
     filename = os.path.join(micropsi_core.runtime.RESOURCE_PATH, micropsi_core.runtime.WORLD_DIRECTORY, data['uid'] + '.json')
     data['filename'] = filename
     with open(filename, 'w+') as fp:
-        fp.write(json.dumps(data))
+        fp.write(json.dumps(data,cls=NetEntityEncoder))
     fp.close()
     micropsi_core.runtime.world_data[data['uid']] = micropsi_core.runtime.parse_definition(data, filename)
     micropsi_core.runtime.worlds[data['uid']] = get_world_class_from_name(
