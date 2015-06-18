@@ -63,7 +63,6 @@ class Nodenet_strongcore_changes(object):
         global _isInitialized
         if not _isInitialized:
             StrongCore.initialize()
-            CoreGlobals.loadOrCreateGlobals()
             Core.load()
             MicroPsi.load()
             _isInitialized = True
@@ -74,6 +73,7 @@ class Nodenet_strongcore_changes(object):
             existingNodenet.unload()
 
         self.container = Container.createContainer( containerName )
+        CoreGlobals.createGlobals(self.container)
         nodenetContainers[containerName]=self
 
         self._linkTypeToPrototypes = {}
@@ -180,7 +180,7 @@ class NetEntity_strongcore_changes(object):
 
     @_index.setter
     def _index(self,index):
-        self.setFacetIntegerValue( MicroPsi.Attr_index, index )
+        self.setFacetInt64Value( MicroPsi.Attr_index, index )
 
 
 class Node_strongcore_changes(object):
@@ -254,7 +254,7 @@ class Node_strongcore_changes(object):
 
     def get_link_weight(self,gate_type,target_node,slot_type):
         rel = self.nodenet.get_or_create_gate_relationship(gate_type,slot_type)
-        return self.getDoubleForFacetAndObject( rel, target_node )
+        return rel.forObjectAt( self, target_node )
 
     def set_link_weight(self,gate_type,target_node,slot_type,weight):
         rel = self.nodenet.get_or_create_gate_relationship(gate_type,slot_type)
@@ -262,7 +262,7 @@ class Node_strongcore_changes(object):
 
     def get_link_certainty(self,gate_type,target_node,slot_type):
         rel = self.nodenet.get_or_create_certainty_relationship(gate_type,slot_type)
-        return self.getDoubleForFacetAndObject( rel, target_node )
+        return rel.forObjectAt( self, target_node )
 
     def set_link_certainty(self,gate_type,target_node,slot_type,certainty):
         rel = self.nodenet.get_or_create_certainty_relationship(gate_type,slot_type)
