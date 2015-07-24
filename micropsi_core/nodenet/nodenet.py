@@ -6,1074 +6,498 @@ Nodenet definition
 from copy import deepcopy
 
 import micropsi_core.tools
-import json
-import os
+from abc import ABCMeta, abstractmethod
 
-import warnings
-from .node import Node, Nodetype, emptySheafElement, STANDARD_NODETYPES
+from .node import Node
 from threading import Lock
 import logging
 from .nodespace import Nodespace
-from .link import Link
-from .monitor import Monitor
+from .netapi import NetAPI
 
 __author__ = 'joscha'
 __date__ = '09.05.12'
 
 NODENET_VERSION = 1
 
+
 class NodenetLockException(Exception):
     pass
 
-class Nodenet(object):
-    """Main data structure for MicroPsi agents,
 
-    Contains the net entities and runs the activation spreading. The nodenet stores persistent data.
+class Nodenet(metaclass=ABCMeta):
 
-    Attributes:
-        state: a dict of persistent nodenet data; everything stored within the state can be stored and exported
-        uid: a unique identifier for the node net
-        name: an optional name for the node net
-        filename: the path and file name to the file storing the persisted net data
-        nodespaces: a dictionary of node space UIDs and respective node spaces
-        nodes: a dictionary of node UIDs and respective nodes
-        links: a dictionary of link UIDs and respective links
-        gate_types: a dictionary of gate type names and the individual types of gates
-        slot_types: a dictionary of slot type names and the individual types of slots
-        node_types: a dictionary of node type names and node type definitions
-        world: an environment for the node net
-        worldadapter: an actual world adapter object residing in a world implementation, provides interface
-        owner: an id of the user who created the node net
-        step: the current simulation step of the node net
+    """
+    Nodenet is the abstract base class for all node net implementations and defines the interface towards
+    runtime.py, which is where JSON API and tests access node nets.
+
+    This abstract Nodenet class defines handling of node net uid, name, world and worldadapter connections,
+    but makes no assumptions on persistency (filesystem, database, memory-only) or implementation.
     """
 
     @property
+    @abstractmethod
+    def engine(self):
+        """
+        Returns the type of node net engine this nodenet is implemented with
+        """
+        pass  # pragma: no cover
+
+    @property
+    @abstractmethod
+    def current_step(self):
+        """
+        Returns the current net step, an integer
+        """
+        pass  # pragma: no cover
+
+    @property
+    @abstractmethod
+    def data(self):
+        """
+        Returns a dict representing the whole node net.
+        Concrete implementations may call this (super) method and then add the following fields if they want to
+        use JSON persistency:
+
+        links
+        nodes
+        nodespaces
+        version
+        """
+        data = self.metadata
+        data.update({
+            'links': {},
+            'nodes': {},
+            'max_coords': self.max_coords,
+            'nodespaces': {},
+            'monitors': self.construct_monitors_dict(),
+            'modulators': {},
+        })
+        return data
+
+    @property
+    def metadata(self):
+        """
+        Returns a dict representing the node net meta data (a subset of .data).
+        """
+        data = {
+            'uid': self.uid,
+            'engine': self.engine,
+            'owner': self.owner,
+            'name': self.name,
+            'is_active': self.is_active,
+            'current_step': self.current_step,
+            'world': self.__world_uid,
+            'worldadapter': self.__worldadapter_uid,
+            'version': NODENET_VERSION
+        }
+        return data
+
+    @property
     def uid(self):
-        return self.state.get("uid")
+        """
+        Returns the uid of the node net
+        """
+        return self.__uid
 
     @property
     def name(self):
-        return self.state.get("name", self.state.get("uid"))
+        """
+        Returns the name of the node net for display purposes
+        """
+        if self.__name is not None:
+            return self.__name
+        else:
+            return self.uid
 
     @name.setter
-    def name(self, identifier):
-        self.state["name"] = identifier
-
-    @property
-    def owner(self):
-        return self.state.get("owner")
-
-    @owner.setter
-    def owner(self, identifier):
-        self.state["owner"] = identifier
+    def name(self, name):
+        """
+        Sets the name of the node net to the given string
+        """
+        self.__name = name
 
     @property
     def world(self):
-        if "world" in self.state:
+        """
+        Returns the currently connected world (as an object) or none if no world is set
+        """
+        if self.__world_uid is not None:
             from micropsi_core.runtime import worlds
-            return worlds.get(self.state["world"])
+            return worlds.get(self.__world_uid)
         return None
 
     @world.setter
     def world(self, world):
+        """
+        Connects the node net to the given world object, or disconnects if None is given
+        """
         if world:
-            self.state["world"] = world.uid
+            self.__world_uid = world.uid
         else:
-            self.state["world"] = None
+            self.__world_uid = None
 
     @property
     def worldadapter(self):
-        return self.state.get("worldadapter")
+        """
+        Returns the uid of the currently connected world adapter
+        """
+        return self.__worldadapter_uid
 
     @worldadapter.setter
     def worldadapter(self, worldadapter_uid):
-        self.state["worldadapter"] = worldadapter_uid
-
-    @property
-    def current_step(self):
-        return self.state.get("step")
-
-    @property
-    def is_active(self):
-        return self.state.get("is_active", False)
-
-    @is_active.setter
-    def is_active(self, is_active):
-        self.state['is_active'] = is_active
-
-    def __init__(self, filename, name="", worldadapter="Default", world=None, owner="", uid=None, nodetypes={}, native_modules={}):
-        """Create a new MicroPsi agent.
-
-        Arguments:
-            filename: the path and filename of the agent
-            agent_type (optional): the interface of this agent to its environment
-            name (optional): the name of the agent
-            owner (optional): the user that created this agent
-            uid (optional): unique handle of the agent; if none is given, it will be generated
         """
+        Connects the node net to the given world adapter uid, or disconnects if None is given
+        """
+        self.__worldadapter_uid = worldadapter_uid
 
-        uid = uid or micropsi_core.tools.generate_uid()
+    def __init__(self, name="", worldadapter="Default", world=None, owner="", uid=None):
+        """
+        Constructor for the abstract base class, must be called by implementations
+        """
+        self.__uid = uid or micropsi_core.tools.generate_uid()
+        self.__name = name
+        self.__world_uid = None
+        self.__worldadapter_uid = None
+        self.is_active = False
 
-        self.state = {
-            "version": NODENET_VERSION,  # used to check compatibility of the node net data
-            "uid": uid,
-            "nodes": {},
-            "links": {},
-            "monitors": {},
-            "nodespaces": {'Root': {}},
-            "activatortypes": list(nodetypes.keys()),
-            "step": 0,
-            "settings": {}
-        }
+        self.__version = NODENET_VERSION  # used to check compatibility of the node net data
+        self.__uid = uid
 
         self.world = world
         self.owner = owner
-        self.name = name or os.path.basename(filename)
-        self.filename = filename
         if world and worldadapter:
             self.worldadapter = worldadapter
 
-        self.nodes = {}
-        self.links = {}
-        self.nodetypes = nodetypes
-        self.native_modules = native_modules
-        self.nodespaces = {}
-        self.monitors = {}
-        self.locks = {}
-        self.nodes_by_coords = {}
+        self.__monitors = {}
+
         self.max_coords = {'x': 0, 'y': 0}
-        self.netapi = NetAPI(self)
 
         self.netlock = Lock()
 
         self.logger = logging.getLogger("nodenet")
-        self.logger.info("Setting up nodenet %s", self.name)
+        self.logger.info("Setting up nodenet %s with engine %s", self.name, self.engine)
 
         self.user_prompt = None
 
-        self.load()
+        self.netapi = NetAPI(self)
 
-    def load(self, string=None):
-        """Load the node net from a file"""
-        # try to access file
-        with self.netlock:
-            if string:
-                self.logger.info("Loading nodenet %s from string", self.name)
-                try:
-                    self.state.update(json.loads(string))
-                except ValueError:
-                    warnings.warn("Could not read nodenet data from string")
-                    return False
-            else:
-                try:
-                    self.logger.info("Loading nodenet %s from file %s", self.name, self.filename)
-                    with open(self.filename) as file:
-                        self.state.update(json.load(file))
-                except ValueError:
-                    warnings.warn("Could not read nodenet data")
-                    return False
-                except IOError:
-                    warnings.warn("Could not open nodenet file")
-
-            if "version" in self.state and self.state["version"] == NODENET_VERSION:
-                self.initialize_nodenet()
-                return True
-            else:
-                warnings.warn("Wrong version of the nodenet data; starting new nodenet")
-                return False
-
-    def initialize_nodespace(self, id, data):
-        if id not in self.nodespaces:
-            # move up the nodespace tree until we find an existing parent or hit root
-            while id != 'Root' and data[id].get('parent_nodespace') not in self.nodespaces:
-                self.initialize_nodespace(data[id]['parent_nodespace'], data)
-            self.nodespaces[id] = Nodespace(self,
-                data[id].get('parent_nodespace'),
-                data[id].get('position'),
-                name=data[id].get('name', 'Root'),
-                uid=id,
-                index=data[id].get('index'),
-                gatefunctions=data[id].get('gatefunctions', {}))
-
-    def initialize_nodenet(self):
-        """Called after reading new nodenet state.
-
-        Parses the nodenet state and set up the non-persistent data structures necessary for efficient
-        computation of the node net
+    @abstractmethod
+    def save(self, filename):
         """
-
-        nodetypes = {}
-        for type, data in self.nodetypes.items():
-            nodetypes[type] = Nodetype(nodenet=self, **data)
-        self.nodetypes = nodetypes
-
-        native_modules = {}
-        for type, data in self.native_modules.items():
-            native_modules[type] = Nodetype(nodenet=self, **data)
-        self.native_modules = native_modules
-
-        # set up nodespaces; make sure that parent nodespaces exist before children are initialized
-        self.nodespaces = {}
-
-        nodespaces_to_initialize = set(self.state.get('nodespaces', {}).keys())
-        for next_nodespace in nodespaces_to_initialize:
-            self.initialize_nodespace(next_nodespace, self.state['nodespaces'])
-
-        nodespaces_to_initialize = []
-        if not self.nodespaces:
-            self.nodespaces["Root"] = Nodespace(self, None, (0, 0), name="Root", uid="Root")
-
-        # set up nodes
-        for uid in self.state.get('nodes', {}):
-            data = self.state['nodes'][uid]
-            if data['type'] in nodetypes or data['type'] in native_modules:
-                self.nodes[uid] = Node(self, **data)
-                pos = self.nodes[uid].position
-                xpos = int(pos[0] - (pos[0] % 100))
-                ypos = int(pos[1] - (pos[1] % 100))
-                if xpos not in self.nodes_by_coords:
-                    self.nodes_by_coords[xpos] = {}
-                    if xpos > self.max_coords['x']:
-                        self.max_coords['x'] = xpos
-                if ypos not in self.nodes_by_coords[xpos]:
-                    self.nodes_by_coords[xpos][ypos] = []
-                    if ypos > self.max_coords['y']:
-                        self.max_coords['y'] = ypos
-                self.nodes_by_coords[xpos][ypos].append(uid)
-            else:
-                warnings.warn("Invalid nodetype %s for node %s" % (data['type'], uid))
-            # set up links
-        for uid in self.state.get('links', {}):
-            data = self.state['links'][uid]
-            if data['source_node_uid'] in self.nodes and \
-                    data['source_gate_name'] in self.nodes[data['source_node_uid']].gates and\
-                    data['target_node_uid'] in self.nodes and\
-                    data['target_slot_name'] in self.nodes[data['target_node_uid']].slots:
-                self.links[uid] = Link(
-                    self.nodes[data['source_node_uid']], data['source_gate_name'],
-                    self.nodes[data['target_node_uid']], data['target_slot_name'],
-                    weight=data['weight'], certainty=data['certainty'],
-                    uid=uid)
-            else:
-                warnings.warn("Slot or gatetype for link %s invalid" % uid)
-        for uid in self.state.get('monitors', {}):
-            self.monitors[uid] = Monitor(self, **self.state['monitors'][uid])
-
-            # TODO: check if data sources and data targets match
-
-    def get_nodetype(self, type):
-        """ Returns the nodetpype instance for the given nodetype or native_module or None if not found"""
-        if type in self.nodetypes:
-            return self.nodetypes[type]
-        else:
-            return self.native_modules.get(type)
-
-    def get_nodespace_area(self, nodespace, x1, x2, y1, y2):
-        x_range = (x1 - (x1 % 100), 100 + x2 - (x2 % 100), 100)
-        y_range = (y1 - (y1 % 100), 100 + y2 - (y2 % 100), 100)
-        data = {
-            'links': {},
-            'nodes': {},
-            'name': self.name,
-            'max_coords': self.max_coords,
-            'is_active': self.is_active,
-            'step': self.current_step,
-            'nodespaces': {i: self.state['nodespaces'][i] for i in self.state['nodespaces']
-                           if self.state['nodespaces'][i]["parent_nodespace"] == nodespace},
-            'world': self.state["world"],
-            'worldadapter': self.worldadapter
-        }
-        if self.user_prompt is not None:
-            data['user_prompt'] = self.user_prompt.copy()
-            self.user_prompt = None
-        links = []
-        followupnodes = []
-        for x in range(*x_range):
-            if x in self.nodes_by_coords:
-                for y in range(*y_range):
-                    if y in self.nodes_by_coords[x]:
-                        for uid in self.nodes_by_coords[x][y]:
-                            if self.nodes[uid].parent_nodespace == nodespace:  # maybe sort directly by nodespace??
-                                data['nodes'][uid] = self.state['nodes'][uid]
-                                links.extend(self.nodes[uid].get_associated_link_ids())
-                                followupnodes.extend(self.nodes[uid].get_associated_node_ids())
-        for uid in links:
-            data['links'][uid] = self.state['links'][uid]
-        for uid in followupnodes:
-            if uid not in data['nodes']:
-                data['nodes'][uid] = self.state['nodes'][uid]
-        return data
-
-    def update_node_positions(self):
-        """ recalculates the position hash """
-        self.nodes_by_coords = {}
-        self.max_coords = {'x': 0, 'y': 0}
-        for uid in self.nodes:
-            pos = self.nodes[uid].position
-            xpos = int(pos[0] - (pos[0] % 100))
-            ypos = int(pos[1] - (pos[1] % 100))
-            if xpos not in self.nodes_by_coords:
-                self.nodes_by_coords[xpos] = {}
-                if xpos > self.max_coords['x']:
-                    self.max_coords['x'] = xpos
-            if ypos not in self.nodes_by_coords[xpos]:
-                self.nodes_by_coords[xpos][ypos] = []
-                if ypos > self.max_coords['y']:
-                    self.max_coords['y'] = ypos
-            self.nodes_by_coords[xpos][ypos].append(uid)
-
-    def delete_node(self, node_uid):
-        if node_uid in self.nodespaces:
-            affected_entities = self.nodespaces[node_uid].get_contents()
-            for key in affected_entities:
-                for uid in affected_entities[key][:]:
-                    self.delete_node(uid)
-            parent_nodespace = self.nodespaces.get(self.nodespaces[node_uid].parent_nodespace)
-            if parent_nodespace and node_uid in parent_nodespace.netentities["nodespaces"]:
-                parent_nodespace.netentities["nodespaces"].remove(node_uid)
-            del self.nodespaces[node_uid]
-            del self.state['nodespaces'][node_uid]
-        else:
-            link_uids = []
-            for key, gate in self.nodes[node_uid].gates.items():
-                link_uids.extend(gate.outgoing.keys())
-            for key, slot in self.nodes[node_uid].slots.items():
-                link_uids.extend(slot.incoming.keys())
-            for uid in link_uids:
-                if uid in self.links:
-                    self.links[uid].remove()
-                    del self.links[uid]
-                if uid in self.state['links']:
-                    del self.state['links'][uid]
-            parent_nodespace = self.nodespaces.get(self.nodes[node_uid].parent_nodespace)
-            parent_nodespace.netentities["nodes"].remove(node_uid)
-            if self.nodes[node_uid].type == "Activator":
-                parent_nodespace.activators.pop(self.nodes[node_uid].parameters["type"], None)
-            del self.nodes[node_uid]
-            del self.state['nodes'][node_uid]
-            self.update_node_positions()
-
-    def get_nodespace(self, nodespace_uid, max_nodes):
-        """returns the nodes and links in a given nodespace"""
-        data = {'nodes': {}, 'links': {}, 'nodespaces': {}}
-        if self.user_prompt is not None:
-            data['user_prompt'] = self.user_prompt.copy()
-            self.user_prompt = None
-        for key in self.state:
-            if key in ['uid', 'links', 'nodespaces', 'monitors']:
-                data[key] = self.state[key]
-            elif key == "nodes":
-                i = 0
-                data[key] = {}
-                for id in self.state[key]:
-                    i += 1
-                    data[key][id] = self.state[key][id]
-                    if max_nodes and i > max_nodes:
-                        break
-        return data
-
-    def clear(self):
-        self.nodes = {}
-        self.links = {}
-        self.monitors = {}
-
-        self.nodes_by_coords = {}
-        self.max_coords = {'x': 0, 'y': 0}
-
-        self.nodespaces = {}
-        Nodespace(self, None, (0, 0), "Root", "Root")
-
-    # add functions for exporting and importing node nets
-    def export_data(self):
-        """serializes and returns the nodenet state for export to a end user"""
-        pass
-
-    def import_data(self, nodenet_data):
-        """imports nodenet state as the current node net"""
-        pass
-
-    def merge_data(self, nodenet_data):
-        """merges the nodenet state with the current node net, might have to give new UIDs to some entities"""
-        # these values shouldn't be overwritten:
-        for key in ['uid', 'filename', 'world']:
-            nodenet_data.pop(key, None)
-        self.state.update(nodenet_data)
-
-    def copy_nodes(self, nodes, nodespaces, target_nodespace=None, copy_associated_links=True):
-        """takes a dictionary of nodes and merges them into the current nodenet.
-        Links between these nodes will be copied, too.
-        If the source nodes are within the current nodenet, it is also possible to retain the associated links.
-        If the source nodes originate within a different nodespace (either because they come from a different
-        nodenet, or because they are copied into a different nodespace), the associated links (i.e. those that
-        link the copied nodes to elements that are themselves not being copied), can be retained, too.
-        Nodes and links may need to receive new UIDs to avoid conflicts.
-
-        Arguments:
-            nodes: a dictionary of node_uids with nodes
-            target_nodespace: if none is given, we copy into the same nodespace of the originating nodes
-            copy_associated_links: if True, also copy connections to not copied nodes
+        Saves the nodenet to the given main metadata json file.
         """
-        rename_nodes = {}
-        rename_nodespaces = {}
-        if not target_nodespace:
-            target_nodespace = "Root"
-            # first, check for nodespace naming conflicts
-        for nodespace_uid in nodespaces:
-            if nodespace_uid in self.nodespaces:
-                rename_nodespaces[nodespace_uid] = micropsi_core.tools.generate_uid()
-            # create the nodespaces
-        for nodespace_uid in nodespaces:
-            original = nodespaces[nodespace_uid]
-            uid = rename_nodespaces.get(nodespace_uid, nodespace_uid)
+        pass  # pragma: no cover
 
-            Nodespace(self, target_nodespace,
-                position=original.position,
-                name=original.name,
-                gatefunctions=deepcopy(original.gatefunctions),
-                uid=uid)
+    @abstractmethod
+    def load(self, filename):
+        """
+        Loads the node net from the given main metadata json file.
+        """
+        pass  # pragma: no cover
 
-        # set the parents (needs to happen in seperate loop to ensure nodespaces are already created
-        for nodespace_uid in nodespaces:
-            if nodespaces[nodespace_uid].parent_nodespace in nodespaces:
-                uid = rename_nodespaces.get(nodespace_uid, nodespace_uid)
-                target_nodespace = rename_nodespaces.get(nodespaces[nodespace_uid].parent_nodespace)
-                self.nodespaces[uid].parent_nodespace = target_nodespace
+    @abstractmethod
+    def remove(self, filename):
+        """
+        Removes the node net's given main metadata json file, plus any additional files the node net may
+        have created for persistency
+        """
+        pass  # pragma: no cover
 
-        # copy the nodes
-        for node_uid in nodes:
-            if node_uid in self.nodes:
-                rename_nodes[node_uid] = micropsi_core.tools.generate_uid()
-                uid = rename_nodes[node_uid]
-            else:
-                uid = node_uid
-
-            original = nodes[node_uid]
-            target = original.parent_nodespace if original.parent_nodespace in nodespaces else target_nodespace
-            target = rename_nodespaces.get(target, target)
-
-            Node(self, target,
-                position=original.position,
-                name=original.name,
-                type=original.type,
-                uid=uid,
-                parameters=deepcopy(original.parameters),
-                gate_parameters=original.get_gate_parameters()
-            )
-
-        # copy the links
-        if len(nodes):
-            links = {}
-            origin_links = nodes[list(nodes.keys())[0]].nodenet.links
-            for node_uid in nodes:
-                node = nodes[node_uid]
-                for slot in node.slots:
-                    for l in node.slots[slot].incoming:
-                        link = origin_links[l]
-                        if link.source_node.uid in nodes or (copy_associated_links
-                                                             and link.source_node.uid in self.nodes):
-                            if not l in links:
-                                links[l] = link
-                for gate in node.gates:
-                    for l in node.gates[gate].outgoing:
-                        link = origin_links[l]
-                        if link.target_node.uid in nodes or (copy_associated_links
-                                                             and link.target_node.uid in self.nodes):
-                            if not l in links:
-                                links[l] = link
-            for l in links:
-                uid = l if not l in self.links else micropsi_core.tools.generate_uid()
-                link = links[l]
-                source_node = self.nodes[rename_nodes.get(link.source_node.uid, link.source_node.uid)]
-                target_node = self.nodes[rename_nodes.get(link.target_node.uid, link.target_node.uid)]
-
-                Link(source_node, link.source_gate.type, target_node, link.target_slot.type,
-                    link.weight, link.certainty, uid)
-
-    def move_nodes(self, nodes, nodespaces, target_nodespace=None):
-        """moves the nodes into a new nodespace or nodenet, and deletes them at their original position.
-        Links will be retained within the same nodenet.
-        When moving into a different nodenet, nodes and links may receive new UIDs to avoid conflicts."""
-        pass
-
+    @abstractmethod
     def step(self):
-        """perform a simulation step"""
-        self.user_prompt = None
-        if self.world is not None and self.world.agents is not None and self.uid in self.world.agents:
-            self.world.agents[self.uid].snapshot()      # world adapter snapshot
-                                                        # TODO: Not really sure why we don't just know our world adapter,
-                                                        # but instead the world object itself
-
-        with self.netlock:
-            self.propagate_link_activation(self.nodes.copy())
-
-            self.timeout_locks()
-
-            activators = self.get_activators()
-            nativemodules = self.get_nativemodules()
-            everythingelse = self.nodes.copy()
-            for key in nativemodules:
-                del everythingelse[key]
-
-            self.calculate_node_functions(activators)       # activators go first
-            self.calculate_node_functions(nativemodules)    # then native modules, so API sees a deterministic state
-            self.calculate_node_functions(everythingelse)   # then all the peasant nodes get calculated
-
-            self.netapi._step()
-
-            self.state["step"] += 1
-            for uid in self.monitors:
-                self.monitors[uid].step(self.state["step"])
-            for uid, node in activators.items():
-                node.activation = self.nodespaces[node.parent_nodespace].activators[node.parameters['type']]
-
-    def propagate_link_activation(self, nodes, limit_gatetypes=None):
-        """ the linkfunction
-            propagate activation from gates to slots via their links. returns the nodes that received activation.
-            Arguments:
-                nodes: the dict of nodes to consider
-                limit_gatetypes (optional): a list of gatetypes to restrict the activation to links originating
-                    from the given slottypes.
         """
-        for uid, node in nodes.items():
-            node.reset_slots()
-
-        # propagate sheaf existence
-        for uid, node in nodes.items():
-            if limit_gatetypes is not None:
-                gates = [(name, gate) for name, gate in node.gates.items() if name in limit_gatetypes]
-            else:
-                gates = node.gates.items()
-            for type, gate in gates:
-                if gate.parameters['spreadsheaves'] is True:
-                    for sheaf in gate.sheaves:
-                        for uid, link in gate.outgoing.items():
-                            for slotname in link.target_node.slots:
-                                if sheaf not in link.target_node.get_slot(slotname).sheaves and link.target_node.type != "Actor":
-                                    link.target_node.get_slot(slotname).sheaves[sheaf] = dict(uid=gate.sheaves[sheaf]['uid'], name=gate.sheaves[sheaf]['name'], activation=0)
-
-        # propagate activation
-        for uid, node in nodes.items():
-            if limit_gatetypes is not None:
-                gates = [(name, gate) for name, gate in node.gates.items() if name in limit_gatetypes]
-            else:
-                gates = node.gates.items()
-
-            for type, gate in gates:
-                for uid, link in gate.outgoing.items():
-                    for sheaf in gate.sheaves:
-                        if link.target_node.type == "Actor":
-                            shef = "default"
-
-                        if sheaf in link.target_slot.sheaves:
-                            link.target_slot.sheaves[sheaf]['activation'] += float(gate.sheaves[sheaf]['activation']) * float(link.weight)  # TODO: where's the string coming from?
-                        elif sheaf.endswith(link.target_node.uid):
-                            upsheaf = sheaf[:-(len(link.target_node.uid) + 1)]
-                            link.target_slot.sheaves[upsheaf]['activation'] += float(gate.sheaves[sheaf]['activation']) * float(link.weight)  # TODO: where's the string coming from?
-
-    def timeout_locks(self):
+        Performs one calculation step, propagating activation accross links
         """
-        Removes all locks that time out in the current step
-        """
-        locks_to_delete = []
-        for lock, data in self.locks.items():
-            self.locks[lock] = (data[0] + 1, data[1], data[2])
-            if data[0] + 1 >= data[1]:
-                locks_to_delete.append(lock)
-        for lock in locks_to_delete:
-            del self.locks[lock]
+        pass  # pragma: no cover
 
-    def calculate_node_functions(self, nodes):
-        """for all given nodes, call their node function, which in turn should update the gate functions
-           Arguments:
-               nodes: the dict of nodes to consider
-        """
-        for uid, node in nodes.copy().items():
-            node.node_function()
-
-    def get_nativemodules(self, nodespace=None):
-        """Returns a dict of native modules. Optionally filtered by the given nodespace"""
-        nodes = self.nodes if nodespace is None else self.nodespaces[nodespace].netentities['nodes']
-        nativemodules = {}
-        for uid in nodes:
-            if self.nodes[uid].type not in STANDARD_NODETYPES:
-                nativemodules.update({uid: self.nodes[uid]})
-        return nativemodules
-
-    def get_activators(self, nodespace=None, type=None):
-        """Returns a dict of activator nodes. OPtionally filtered by the given nodespace and the given type"""
-        nodes = self.nodes if nodespace is None else self.nodespaces[nodespace].netentities['nodes']
-        activators = {}
-        for uid in nodes:
-            if self.nodes[uid].type == 'Activator':
-                if type is None or type == self.nodes[uid].parameters['type']:
-                    activators.update({uid: self.nodes[uid]})
-        return activators
-
-    def get_sensors(self, nodespace=None):
-        """Returns a dict of all sensor nodes. Optionally filtered by the given nodespace"""
-        nodes = self.nodes if nodespace is None else self.nodespaces[nodespace].netentities['nodes']
-        sensors = {}
-        for uid in nodes:
-            if self.nodes[uid].type == 'Sensor':
-                sensors[uid] = self.nodes[uid]
-        return sensors
-
-    def get_actors(self, nodespace=None):
-        """Returns a dict of all sensor nodes. Optionally filtered by the given nodespace"""
-        nodes = self.nodes if nodespace is None else self.nodespaces[nodespace].netentities['nodes']
-        actors = {}
-        for uid in nodes:
-            if self.nodes[uid].type == 'Actor':
-                actors[uid] = self.nodes[uid]
-        return actors
-
-    def get_link_uid(self, source_uid, source_gate_name, target_uid, target_slot_name):
-        """links are uniquely identified by their origin and targets; this function checks if a link already exists.
-
-        Arguments:
-            source_node: actual node from which the link originates
-            source_gate_name: type of the gate of origin
-            target_node: node that the link ends at
-            target_slot_name: type of the terminating slot
-
-        Returns the link uid, or None if it does not exist"""
-        outgoing_candidates = set(self.nodes[source_uid].get_gate(source_gate_name).outgoing.keys())
-        incoming_candidates = set(self.nodes[target_uid].get_slot(target_slot_name).incoming.keys())
-        try:
-            return (outgoing_candidates & incoming_candidates).pop()
-        except KeyError:
-            return None
-
-    def set_link_weight(self, link_uid, weight, certainty=1):
-        """Set weight of the given link."""
-        self.state['links'][link_uid]['weight'] = weight
-        self.state['links'][link_uid]['certainty'] = certainty
-        self.links[link_uid].weight = weight
-        self.links[link_uid].certainty = certainty
-        return True
-
-    def create_link(self, source_node_uid, gate_type, target_node_uid, slot_type, weight=1, certainty=1, uid=None):
-        """Creates a new link.
-
-        Arguments.
-            source_node_uid: uid of the origin node
-            gate_type: type of the origin gate (usually defines the link type)
-            target_node_uid: uid of the target node
-            slot_type: type of the target slot
-            weight: the weight of the link (a float)
-            certainty (optional): a probabilistic parameter for the link
-            uid (option): if none is supplied, a uid will be generated
-
-        Returns:
-            link_uid if successful,
-            None if failure
-        """
-
-        # check if link already exists
-        existing_uid = self.get_link_uid(
-            source_node_uid, gate_type,
-            target_node_uid, slot_type)
-        if existing_uid:
-            self.set_link_weight(existing_uid, weight, certainty)
-            link = self.links[existing_uid]
-        else:
-            link = Link(
-                self.nodes[source_node_uid],
-                gate_type,
-                self.nodes[target_node_uid],
-                slot_type,
-                weight=weight,
-                certainty=certainty,
-                uid=uid)
-            self.links[link.uid] = link
-        return True, link.uid
-
-    def delete_link(self, link_uid):
-        """Delete the given link."""
-        self.links[link_uid].remove()
-        del self.links[link_uid]
-        del self.state['links'][link_uid]
-        return True
-
-    def is_locked(self, lock):
-        """Returns true if a lock of the given name exists"""
-        return lock in self.locks
-
-    def is_locked_by(self, lock, key):
-        """Returns true if a lock of the given name exists and the key used is the given one"""
-        return lock in self.locks and self.locks[lock][2] == key
-
-    def lock(self, lock, key, timeout=100):
-        """Creates a lock with the given name that will time out after the given number of steps
-        """
-        if self.is_locked(lock):
-            raise NodenetLockException("Lock %s is already locked." % lock)
-        self.locks[lock] = (0, timeout, key)
-
-    def unlock(self, lock):
-        """Removes the given lock
-        """
-        del self.locks[lock]
-
-class NetAPI(object):
-    """
-    Node Net API facade class for use from within the node net (in node functions)
-    """
-
-    __locks_to_delete = []
-
-    @property
-    def uid(self):
-        return self.__nodenet.uid
-
-    @property
-    def step(self):
-        return self.__nodenet.current_step
-
-    @property
-    def world(self):
-        return self.__nodenet.world
-
-    @property
-    def nodespaces(self):
-        return self.__nodenet.nodespaces
-
-    def __init__(self, nodenet):
-        self.__nodenet = nodenet
-
-    @property
-    def logger(self):
-        return self.__nodenet.logger
-
+    @abstractmethod
     def get_node(self, uid):
         """
-        Returns the node with the given uid
+        Returns the Node object with the given UID or None if no such Node object exists
         """
-        return self.__nodenet.nodes[uid]
+        pass  # pragma: no cover
 
-    def get_nodes(self, nodespace=None, node_name_prefix=None):
+    @abstractmethod
+    def get_node_uids(self, group_nodespace_uid=None, group=None):
         """
-        Returns a list of nodes in the given nodespace (all Nodespaces if None) whose names start with
-        the given prefix (all if None)
+        Returns a list of the UIDs of all Node objects that exist in the node net
+        If group_nodespace_uid/group parameters are given, all uids of nodes in the given group will be returned
         """
-        nodes = []
-        for node_uid, node in self.__nodenet.nodes.items():
-            if ((node_name_prefix is None or node.name.startswith(node_name_prefix)) and
-                    (nodespace is None or node.parent_nodespace == nodespace)):
-                nodes.append(node)
-        return nodes
+        pass  # pragma: no cover
 
-    def get_nodes_in_gate_field(self, node, gate=None, no_links_to=None, nodespace=None):
+    @abstractmethod
+    def is_node(self, uid):
         """
-        Returns all nodes linked to a given node on the gate, excluding the ones that have
-        links of any of the given types
+        Returns true if the given UID is the UID of an existing Node object
         """
-        nodes = []
-        if gate is not None:
-            gates = [gate]
-        else:
-            gates = self.__nodenet.nodes[node.uid].gates.keys()
-        for gate in gates:
-            for link_uid, link in self.__nodenet.nodes[node.uid].gates[gate].outgoing.items():
-                candidate = link.target_node
-                linked_gates = []
-                for candidate_gate_name, candidate_gate in candidate.gates.items():
-                    if len(candidate_gate.outgoing) > 0:
-                        linked_gates.append(candidate_gate_name)
-                if ((nodespace is None or nodespace == link.target_node.parent_nodespace) and
-                    (no_links_to is None or not len(set(no_links_to).intersection(set(linked_gates))))):
-                    nodes.append(candidate)
-        return nodes
+        pass  # pragma: no cover
 
-    def get_nodes_in_slot_field(self, node, slot=None, no_links_to=None, nodespace=None):
+    @abstractmethod
+    def create_node(self, nodetype, nodespace_uid, position, name="", uid=None, parameters=None, gate_parameters=None):
         """
-        Returns all nodes linking to a given node on the given slot, excluding the ones that
-        have links of any of the given types
+        Creates a new node of the given node type (string), in the nodespace with the given UID, at the given
+        position and returns the uid of the new node
         """
-        nodes = []
-        if slot is not None:
-            slots = [slot]
-        else:
-            slots = self.__nodenet.nodes[node.uid].slots.keys()
-        for slot in slots:
-            for link_uid, link in self.__nodenet.nodes[node.uid].slots[slot].incoming.items():
-                candidate = link.source_node
-                linked_gates = []
-                for candidate_gate_name, candidate_gate in candidate.gates.items():
-                    if len(candidate_gate.outgoing) > 0:
-                        linked_gates.append(candidate_gate_name)
-                if ((nodespace is None or nodespace == link.source_node.parent_nodespace) and
-                    (no_links_to is None or not len(set(no_links_to).intersection(set(linked_gates))))):
-                    nodes.append(candidate)
-        return nodes
+        pass  # pragma: no cover
 
-    def get_nodes_active(self, nodespace, type=None, min_activation=1, gate=None, sheaf='default'):
+    @abstractmethod
+    def delete_node(self, uid):
         """
-        Returns all nodes with a min activation, of the given type, active at the given gate, or with node.activation
+        Deletes the node with the given UID.
         """
-        nodes = []
-        for node in self.get_nodes(nodespace):
-            if type is None or node.type == type:
-                if gate is not None:
-                    if gate in node.gates:
-                        if node.get_gate(gate).sheaves[sheaf]['activation'] >= min_activation:
-                            nodes.append(node)
-                else:
-                    if node.sheaves[sheaf]['activation'] >= min_activation:
-                        nodes.append(node)
-        return nodes
+        pass  # pragma: no cover
 
-    def delete_node(self, node):
+    @abstractmethod
+    def get_nodespace(self, uid):
         """
-        Deletes a node and all links connected to it.
+        Returns the Nodespace object with the given UID or None if no such Nodespace object exists
+        Passing none will return the root nodespace
         """
-        self.__nodenet.delete_node(node.uid)
+        pass  # pragma: no cover
 
-    def create_node(self, nodetype, nodespace, name=None):
+    @abstractmethod
+    def get_nodespace_uids(self):
         """
-        Creates a new node or node space of the given type, with the given name and in the given nodespace.
-        Returns the newly created entity.
+        Returns a list of the UIDs of all Nodespace objects that exist in the node net
         """
-        if name is None:
-            name = ""   #TODO: empty names crash the client right now, but really shouldn't
-        pos = (self.__nodenet.max_coords['x'] + 50, 100)  # default so native modules will not be bothered with positions
-        if nodetype == "Nodespace":
-            entity = Nodespace(self.__nodenet, nodespace, pos, name=name)
-        else:
-            entity = Node(self.__nodenet, nodespace, pos, name=name, type=nodetype)
-        self.__nodenet.update_node_positions()
-        return entity
+        pass  # pragma: no cover
 
-    def link(self, source_node, source_gate, target_node, target_slot, weight=1, certainty=1):
+    @abstractmethod
+    def is_nodespace(self, uid):
         """
-        Creates a link between two nodes. If the link already exists, it will be updated
-        with the given weight and certainty values (or the default 1 if not given)
+        Returns true if the given UID is the UID of an existing Nodespace object
         """
-        self.__nodenet.create_link(source_node.uid, source_gate, target_node.uid, target_slot, weight, certainty)
+        pass  # pragma: no cover
 
-    def link_with_reciprocal(self, source_node, target_node, linktype, weight=1, certainty=1):
+    @abstractmethod
+    def create_nodespace(self, parent_uid, position, name="", uid=None):
         """
-        Creates two (reciprocal) links between two nodes, valid linktypes are subsur, porret, catexp and symref
+        Creates a new nodespace  in the nodespace with the given UID, at the given position.
         """
-        if linktype == "subsur":
-            subslot = "sub" if "sub" in target_node.slots else "gen"
-            surslot = "sur" if "sur" in source_node.slots else "gen"
-            self.__nodenet.create_link(source_node.uid, "sub", target_node.uid, subslot, weight, certainty)
-            self.__nodenet.create_link(target_node.uid, "sur", source_node.uid, surslot, weight, certainty)
-        elif linktype == "porret":
-            porslot = "por" if "por" in target_node.slots else "gen"
-            retslot = "ret" if "ret" in source_node.slots else "gen"
-            self.__nodenet.create_link(source_node.uid, "por", target_node.uid, porslot, weight, certainty)
-            self.__nodenet.create_link(target_node.uid, "ret", source_node.uid, retslot, weight, certainty)
-        elif linktype == "catexp":
-            catslot = "cat" if "cat" in target_node.slots else "gen"
-            expslot = "exp" if "exp" in source_node.slots else "gen"
-            self.__nodenet.create_link(source_node.uid, "cat", target_node.uid, catslot, weight, certainty)
-            self.__nodenet.create_link(target_node.uid, "exp", source_node.uid, expslot, weight, certainty)
-        elif linktype == "symref":
-            symslot = "sym" if "sym" in target_node.slots else "gen"
-            refslot = "ref" if "ref" in source_node.slots else "gen"
-            self.__nodenet.create_link(source_node.uid, "sym", target_node.uid, symslot, weight, certainty)
-            self.__nodenet.create_link(target_node.uid, "ref", source_node.uid, refslot, weight, certainty)
+        pass  # pragma: no cover
 
-    def link_full(self, nodes, linktype="porret", weight=1, certainty=1):
+    @abstractmethod
+    def delete_nodespace(self, uid):
         """
-        Creates two (reciprocal) links between all nodes in the node list (every node to every node),
-        valid linktypes are subsur, porret, and catexp.
+        Deletes the nodespace with the given UID, and everything it contains
         """
-        for source in nodes:
-            for target in nodes:
-                self.link_with_reciprocal(source, target, linktype, weight, certainty)
+        pass  # pragma: no cover
 
-    def unlink(self, source_node, source_gate=None, target_node=None, target_slot=None):
+    @abstractmethod
+    def get_sensors(self, nodespace=None, datasource=None):
         """
-        Deletes a link, or links, originating from the given node
+        Returns a dict of all sensor nodes. Optionally filtered by the given nodespace and data source
         """
-        links_to_delete = []
-        for gatetype, gateobject in source_node.gates.items():
-            if source_gate is None or source_gate == gatetype:
-                for linkid, link in gateobject.outgoing.items():
-                    if target_node is None or target_node.uid == link.target_node.uid:
-                        if target_slot is None or target_slot == link.target_slot.type:
-                            links_to_delete.append(linkid)
+        pass  # pragma: no cover
 
-        for uid in links_to_delete:
-            self.__nodenet.delete_link(uid)
+    @abstractmethod
+    def get_actors(self, nodespace=None, datatarget=None):
+        """
+        Returns a dict of all sensor nodes. Optionally filtered by the given nodespace and data target
+        """
+        pass  # pragma: no cover
 
-    def unlink_direction(self, node, gateslot=None):
+    @abstractmethod
+    def create_link(self, source_node_uid, gate_type, target_node_uid, slot_type, weight=1, certainty=1):
         """
-        Deletes all links from a node ending at the given gate or originating at the given slot
-        Read this as 'delete all por linkage from this node'
+        Creates a new link between the given node/gate and node/slot
         """
-        links_to_delete = set()
-        for gatetype, gateobject in node.gates.items():
-            if gateslot is None or gateslot == gatetype:
-                for linkid, link in gateobject.outgoing.items():
-                    links_to_delete.add(linkid)
-        for slottype, slotobject in node.slots.items():
-            if gateslot is None or gateslot == slottype:
-                for linkid, link in slotobject.incoming.items():
-                    links_to_delete.add(linkid)
+        pass  # pragma: no cover
 
-        for uid in links_to_delete:
-            self.__nodenet.delete_link(uid)
+    @abstractmethod
+    def set_link_weight(self, source_node_uid, gate_type, target_node_uid, slot_type, weight=1, certainty=1):
+        """
+        Set weight of the link between the given node/gate and node/slot
+        """
+        pass  # pragma: no cover
 
-    def link_actor(self, node, datatarget, weight=1, certainty=1, gate='sub', slot='sur'):
+    @abstractmethod
+    def delete_link(self, source_node_uid, gate_type, target_node_uid, slot_type):
         """
-        Links a node to an actor. If no actor exists in the node's nodespace for the given datatarget,
-        a new actor will be created, otherwise the first actor found will be used
+        Deletes the link between the given node/gate and node/slot
         """
-        if datatarget not in self.world.get_available_datatargets(self.__nodenet.uid):
-            raise KeyError("Data target %s not found" % datatarget)
-        actor = None
-        for uid, candidate in self.__nodenet.get_actors(node.parent_nodespace).items():
-            if candidate.parameters['datatarget'] == datatarget:
-                actor = candidate
-        if actor is None:
-            actor = self.create_node("Actor", node.parent_nodespace, datatarget)
-            actor.parameters.update({'datatarget': datatarget})
+        pass  # pragma: no cover
 
-        self.link(node, gate, actor, 'gen', weight, certainty)
-        #self.link(actor, 'gen', node, slot)
+    @abstractmethod
+    def reload_native_modules(self, native_modules):
+        """
+        Replaces the native module definitions in the nodenet with the native module definitions given in the
+        native_modules dict.
 
-    def link_sensor(self, node, datasource, slot='sur'):
-        """
-        Links a node to a sensor. If no sensor exists in the node's nodespace for the given datasource,
-        a new sensor will be created, otherwise the first sensor found will be used
-        """
-        if datasource not in self.world.get_available_datasources(self.__nodenet.uid):
-            raise KeyError("Data source %s not found" % datasource)
-        sensor = None
-        for uid, candidate in self.__nodenet.get_sensors(node.parent_nodespace).items():
-            if candidate.parameters['datasource'] == datasource:
-                sensor = candidate
-        if sensor is None:
-            sensor = self.create_node("Sensor", node.parent_nodespace, datasource)
-            sensor.parameters.update({'datasource': datasource})
+        Format example for the definition dict:
 
-        self.link(sensor, 'gen', node, slot)
-
-    def import_actors(self, nodespace, datatarget_prefix=None):
-        """
-        Makes sure an actor for all datatargets whose names start with the given prefix, or all datatargets,
-        exists in the given nodespace.
-        """
-        all_actors = []
-        if self.world is None:
-            return all_actors
-
-        for datatarget in self.world.get_available_datatargets(self.__nodenet.uid):
-            if datatarget_prefix is None or datatarget.startswith(datatarget_prefix):
-                actor = None
-                for uid, candidate in self.__nodenet.get_actors(nodespace).items():
-                    if candidate.parameters['datatarget'] == datatarget:
-                        actor = candidate
-                if actor is None:
-                    actor = self.create_node("Actor", nodespace, datatarget)
-                    actor.parameters.update({'datatarget': datatarget})
-                all_actors.append(actor)
-        return all_actors
-
-    def import_sensors(self, nodespace, datasource_prefix=None):
-        """
-        Makes sure a sensor for all datasources whose names start with the given prefix, or all datasources,
-        exists in the given nodespace.
-        """
-        all_sensors = []
-        if self.world is None:
-            return all_sensors
-
-        for datasource in self.world.get_available_datasources(self.__nodenet.uid):
-            if datasource_prefix is None or datasource.startswith(datasource_prefix):
-                sensor = None
-                for uid, candidate in self.__nodenet.get_sensors(nodespace).items():
-                    if candidate.parameters['datasource'] == datasource:
-                        sensor = candidate
-                if sensor is None:
-                    sensor = self.create_node("Sensor", nodespace, datasource)
-                    sensor.parameters.update({'datasource': datasource})
-                all_sensors.append(sensor)
-        return all_sensors
-
-    def set_gatefunction(self, nodespace, nodetype, gatetype, gatefunction):
-        """Sets the gatefunction for gates of type gatetype of nodes of type nodetype, in the given
-            nodespace.
-            The gatefunction needs to be given as a string.
-        """
-        self.__nodenet.nodespaces[nodespace].set_gate_function(nodetype, gatetype, gatefunction)
-
-    def is_locked(self, lock):
-        """Returns true if the given lock is locked in the current net step
-        """
-        return self.__nodenet.is_locked(lock)
-
-    def is_locked_by(self, lock, key):
-        """Returns true if the given lock is locked in the current net step, with the given key
-        """
-        return self.__nodenet.is_locked_by(lock, key)
-
-    def lock(self, lock, key, timeout=100):
-        """
-        Creates a lock with immediate effect.
-        If two nodes try to create the same lock in the same net step, the second call will fail.
-        As nodes need to check is_locked before acquiring locks anyway, this effectively means that if two
-        nodes attempt to acquire the same lock at the same time (in the same net step), the node to get the
-        lock will be chosen randomly.
-        """
-        self.__nodenet.lock(lock, key, timeout)
-
-    def unlock(self, lock):
-        """
-        Removes a lock by the end of the net step, after all node functions have been called.
-        Thus, locks can only be acquired in the next net step (no indeterminism based on node function execution
-        order as with creating locks).
-        """
-        self.__locks_to_delete.append(lock)
-
-    def notify_user(self, node, msg):
-        """
-        Stops the nodenetrunner for this nodenet, and displays an information to the user,
-        who can then choose to continue or suspend running nodenet
-        Parameters:
-            node: the node object that emits this message
-            msg: a string to display to the user
-        """
-        self.__nodenet.user_prompt = {
-            'node': node.data,
-            'msg': msg,
-            'options': None
+        "native_module_id": {
+            "name": "Name of the Native Module",
+            "slottypes": ["trigger"],
+            "nodefunction_name": "native_module_function",
+            "gatetypes": ["done"],
+            "gate_defaults": {
+                "done": {
+                    "minimum": -100,
+                    "maximum": 100,
+                    "threshold": -100
+                }
+            }
         }
-        self.__nodenet.is_active = False
 
-    def ask_user_for_parameter(self, node, msg, options):
         """
-        Stops the nodenetrunner for this nodenet, and asks the user for values to the given parameters.
-        These parameters will be passed into the nodefunction in the next step of the nodenet.
-        The user can choose to either continue or suspend running the nodenet
-        Parameters:
-            node: the node object that emits this message
-            msg: a string to display to the user
-            options: an array of objects representing the variables to set by the user. Needs key, label. Optional: array or object of values
+        pass  # pragma: no cover
 
-        example usage:
-            options = [{
-                'key': 'where',
-                'label': 'Where should I go next?',
-                'values': {'north': 'North', 'east': 'East', 'south': 'South', 'west': 'west'}
-            }, {
-                'key': 'wait':
-                'label': 'How long should I wait until I go there?',
-            }]
-            netapi.ask_user_for_parameter(node, "Please decide what to do next", options)
+    @abstractmethod
+    def get_nodespace_data(self, nodespace_uid, include_links):
         """
-        self.__nodenet.user_prompt = {
-            'node': node.data,
-            'msg': msg,
-            'options': options
-        }
-        self.__nodenet.is_active = False
+        Returns a data dict of the structure defined in the .data property, filtered for nodes in the given
+        nodespace.
 
-    def _step(self):
-        for lock in self.__locks_to_delete:
-            self.__nodenet.unlock(lock)
-        self.__locks_to_delete = []
+        Implementations are expected to fill the following keys:
+        'nodes' - map of nodes it the given rectangle
+        'links' - map of links ending or originating in the given rectangle
+        'nodespaces' - map of nodespaces positioned in the given rectangle
+        'monitors' - result of self.construct_monitors_dict()
+        'user_prompt' - self.user_prompt if set, should be cleared then
+        """
+        pass  # pragma: no cover
+
+    @abstractmethod
+    def merge_data(self, nodenet_data, keep_uids=False):
+        """
+        Merges in the data in nodenet_data, which is a dict of the structure defined by the .data property.
+        If keep_uids is True, the supplied UIDs will be used. This may lead to all sorts of inconsistencies,
+        so only tests should use keep_uids=True
+        """
+        pass  # pragma: no cover
+
+    @abstractmethod
+    def get_modulator(self, modulator):
+        """
+
+        Returns the numeric value of the given global modulator
+        """
+        pass  # pragma: no cover
+
+    @abstractmethod
+    def change_modulator(self, modulator, diff):
+        """
+        Changes the value of the given global modulator by the value of diff
+        """
+        pass  # pragma: no cover
+
+    @abstractmethod
+    def set_modulator(self, modulator, value):
+        """
+        Changes the value of the given global modulator to the given value
+        """
+        pass  # pragma: no cover
+
+    @abstractmethod
+    def get_standard_nodetype_definitions(self):
+        """
+        Returns the standard node types supported by this nodenet
+        """
+        pass  # pragma: no cover
+
+    @abstractmethod
+    def group_nodes_by_names(self, nodespace_uid, node_name_prefix=None, gatetype="gen", sortby='id'):
+        """
+        Groups the given set of nodes.
+        Groups can be used in bulk operations.
+        Grouped nodes will have stable sorting accross all bulk operations.
+        """
+        pass  # pragma: no cover
+
+    @abstractmethod
+    def group_nodes_by_ids(self, nodespace_uid, node_uids, group_name, gatetype="gen", sortby='id'):
+        """
+        Groups the given set of nodes.
+        Groups can be used in bulk operations.
+        Grouped nodes will have stable sorting accross all bulk operations.
+        """
+        pass  # pragma: no cover
+
+    @abstractmethod
+    def ungroup_nodes(self, nodespace_uid, group):
+        """
+        Deletes the given group (not the nodes, just the group assignment)
+        """
+        pass  # pragma: no cover
+
+    @abstractmethod
+    def get_activations(self, nodespace_uid, group):
+        """
+        Returns an array of activations for the given group.
+        For multi-gate nodes, the activations of the gate specified when creating the group will be returned.
+        """
+        pass  # pragma: no cover
+
+    @abstractmethod
+    def set_activations(self, nodespace_uid, group, new_activations):
+        """
+        Sets the activation of the given elements to the given value.
+        Note that this overrides the calculated activations, including all gate mechanics,
+        including gate function, thresholds, min, max, amplification and directional
+        activators - the values passed will be propagated in the next step.
+        """
+        pass  # pragma: no cover
+
+    @abstractmethod
+    def get_thetas(self, nodespace_uid, group):
+        """
+        Returns a list of theta values for the given group.
+        For multi-gate nodes, the thetas of the gen gates will be returned
+        """
+        pass  # pragma: no cover
+
+    @abstractmethod
+    def set_thetas(self, nodespace_uid, group, thetas):
+        """
+        Bulk-sets thetas for the given group.
+        new_thetas dimensionality has to match the group length
+        """
+        pass  # pragma: no cover
+
+    @abstractmethod
+    def get_link_weights(self, nodespace_from_uid, group_from, nodespace_to_uid, group_to):
+        """
+        Returns the weights of links between two groups as a matrix.
+        Rows are group_to slots, columns are group_from gates.
+        Non-existing links will be returned as 0-entries in the matrix.
+        """
+        pass  # pragma: no cover
+
+    @abstractmethod
+    def set_link_weights(self, nodespace_from_uid, group_from, nodespace_to_uid, group_to, new_w):
+        """
+        Sets the weights of links between two groups from the given matrix new_w.
+        Rows are group_to slots, columns are group_from gates.
+        Note that setting matrix entries to non-0 values will implicitly create links.
+        """
+        pass  # pragma: no cover
+
+    @abstractmethod
+    def get_available_gatefunctions(self):
+        """
+        Returns a list of available gate functions
+        """
+        pass  # pragma: no cover
+
+    def clear(self):
+        self.__monitors = {}
+
+    def get_monitor(self, uid):
+        return self.__monitors[uid]
+
+    def update_monitors(self):
+        for uid in self.__monitors:
+            self.__monitors[uid].step(self.current_step)
+
+    def construct_monitors_dict(self):
+        data = {}
+        for monitor_uid in self.__monitors:
+            data[monitor_uid] = self.__monitors[monitor_uid].data
+        return data
+
+    def _register_monitor(self, monitor):
+        self.__monitors[monitor.uid] = monitor
+
+    def _unregister_monitor(self, monitor_uid):
+        del self.__monitors[monitor_uid]

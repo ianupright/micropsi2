@@ -46,9 +46,9 @@ import datetime
 import threading
 import time
 import uuid
-import warnings
+import logging
 import micropsi_core.tools
-from configuration import USERMANAGER_PATH
+from configuration import config as cfg
 
 ADMIN_USER = "admin"  # default name of the admin user
 DEFAULT_ROLE = "Restricted"  # new users can create and edit nodenets, but not create worlds
@@ -75,10 +75,7 @@ class UserManager(object):
         user_file: the handle for the user data file
     """
 
-    users = None
-    sessions = {}
-
-    def __init__(self, userfile_path = USERMANAGER_PATH):
+    def __init__(self, userfile_path=None):
         """initialize user management.
 
         If no user data are found, a new resource file is created.
@@ -86,18 +83,22 @@ class UserManager(object):
         Parameters:
             resource_path (optional): a path to store user data permanently.
         """
+        self.users = None
+        self.sessions = {}
 
         # set up persistence
+        if userfile_path is None:
+            userfile_path = cfg['paths']['usermanager_path']
         micropsi_core.tools.mkdir(os.path.dirname(userfile_path))
 
-        self.user_file_name = userfile_path # todo: make this work without a file system
+        self.user_file_name = userfile_path  # todo: make this work without a file system
         try:
             with open(self.user_file_name) as file:
                 self.users = json.load(file)
         except ValueError:
-            warnings.warn("Invalid user data")
+            logging.getLogger('system').warn("Invalid user data")
         except IOError:
-            warnings.warn("Could not open user data file")
+            logging.getLogger('system').info("No readable userdata file, attempting to create one.")
 
         if not self.users:
             self.users = {}
@@ -105,7 +106,8 @@ class UserManager(object):
         # set up sessions
         for i in self.users:
             active_session = self.users[i]["session_token"]
-            if active_session: self.sessions[active_session] = i
+            if active_session:
+                self.sessions[active_session] = i
 
         # set up session cleanup
         def _session_expiration():

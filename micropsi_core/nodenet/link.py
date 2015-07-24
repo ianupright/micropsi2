@@ -5,119 +5,80 @@ Link definition
 """
 
 import micropsi_core.tools
+from abc import ABCMeta, abstractmethod
 
 __author__ = 'joscha'
 __date__ = '09.05.12'
 
 
-class Link(object):
-    """A link between two nodes, starting from a gate and ending in a slot.
-
-    Links propagate activation between nodes and thereby facilitate the function of the agent.
-    Links have weights, but apart from that, all their properties are held in the gates where they emanate.
-    Gates contain parameters, and the gate type effectively determines a link type.
-
-    You may retrieve links either from the global dictionary (by uid), or from the gates of nodes themselves.
+class Link(metaclass=ABCMeta):
+    """
+    A link between two nodes, starting from a gate and ending in a slot.
     """
 
     @property
+    def data(self):
+        data = {
+            "uid": self.uid,
+            "weight": self.weight,
+            "certainty": self.certainty,
+            "source_gate_name": self.source_gate.type,
+            "source_node_uid": self.source_node.uid,
+            "target_slot_name": self.target_slot.type,
+            "target_node_uid": self.target_node.uid,
+        }
+        return data
+
+    @property
     def uid(self):
-        return self.data.get("uid")
+        return self.source_node.uid + ":" + self.source_gate.type + ":" + self.target_slot.type + ":" + self.target_node.uid
 
     @property
+    @abstractmethod
     def weight(self):
-        return self.data.get("weight")
-
-    @weight.setter
-    def weight(self, value):
-        self.data["weight"] = value
+        """
+        Returns the weight (the strength) of this link
+        """
+        pass  # pragma: no cover
 
     @property
+    @abstractmethod
     def certainty(self):
-        return self.data.get("certainty")
-
-    @certainty.setter
-    def certainty(self, value):
-        self.data["certainty"] = value
+        """
+        Returns the certainty value of this link.
+        Note that this is not being used right now and defined/reserved for future use.
+        Implementations can always return 1 for the time being
+        """
+        pass  # pragma: no cover
 
     @property
+    @abstractmethod
     def source_node(self):
-        return self.source_node_pointer
-
-    @source_node.setter
-    def source_node(self, node):
-        self.data["source_node_uid"] = node.uid
-        self.source_node_pointer = node
+        """
+        Returns the Node (object) from which this link originates
+        """
+        pass  # pragma: no cover
 
     @property
+    @abstractmethod
     def source_gate(self):
-        return self.source_node_pointer.gates[self.data["source_gate_name"]]
-
-    @source_gate.setter
-    def source_gate(self, gate):
-        self.data["source_gate_name"] = gate.type
+        """
+        Returns the Gate (object) from which this link originates
+        """
+        pass  # pragma: no cover
 
     @property
+    @abstractmethod
     def target_node(self):
-        return self.target_node_pointer
-
-    @target_node.setter
-    def target_node(self, node):
-        self.data["target_node_uid"] = node.uid
-        self.target_node_pointer = node
+        """
+        Returns the Node (object) at which this link ends
+        """
+        pass  # pragma: no cover
 
     @property
+    @abstractmethod
     def target_slot(self):
-        return self.target_node_pointer.slots[self.data["target_slot_name"]]
-
-    @target_slot.setter
-    def target_slot(self, slot):
-        self.data["target_slot_name"] = slot.type
-
-    def __init__(self, source_node, source_gate_name, target_node, target_slot_name, weight=1, certainty=1, uid=None):
-        """create a link between the source_node and the target_node, from the source_gate to the target_slot.
-        Note: you should make sure that no link between source and gate exists.
-
-        Attributes:
-            weight (optional): the weight of the link (default is 1)
         """
-
-        uid = uid or micropsi_core.tools.generate_uid()
-        self.nodenet = source_node.nodenet
-        self.source_node_pointer = source_node
-        self.target_node_pointer = target_node
-        if not uid in self.nodenet.state["links"]:
-            self.nodenet.state["links"][uid] = {}
-        self.data = source_node.nodenet.state["links"][uid]
-        self.data["uid"] = uid
-        self.data["source_node_uid"] = source_node.uid
-        self.data["target_node_uid"] = target_node.uid
-        self.link(source_node, source_gate_name, target_node, target_slot_name, weight, certainty)
-
-    def link(self, source_node, source_gate_name, target_node, target_slot_name, weight=1, certainty=1):
-        """link between source and target nodes, from a gate to a slot.
-
-            You may call this function to change the connections of an existing link. If the link is already
-            linked, it will be unlinked first.
+        Returns the Slot (object) at which this link ends
         """
-        if self.source_node:
-            if self.source_node != source_node and self.source_gate.type != source_gate_name:
-                del self.source_gate.outgoing[self.uid]
-        if self.target_node:
-            if self.target_node != target_node and self.target_slot.type != target_slot_name:
-                del self.target_slot.incoming[self.uid]
-        self.source_node = source_node
-        self.target_node = target_node
-        self.source_gate = source_node.get_gate(source_gate_name)
-        self.target_slot = target_node.get_slot(target_slot_name)
-        self.weight = weight
-        self.certainty = certainty
-        self.source_gate.outgoing[self.uid] = self
-        self.target_slot.incoming[self.uid] = self
-
-    def remove(self):
-        """unplug the link from the node net
-           can't be handled in the destructor, since it removes references to the instance
-        """
-        del self.source_gate.outgoing[self.uid]
-        del self.target_slot.incoming[self.uid]
+        pass  # pragma: no cover

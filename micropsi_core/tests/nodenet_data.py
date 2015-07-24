@@ -2,70 +2,62 @@
 fixed_nodenet_data = """{
     "uid": "fixed_test_nodenet",
     "links": {
-        "B1B2": {
+        "n0003:sub:gen:n0004": {
             "certainty": 1,
             "source_gate_name": "sub",
-            "source_node": "B1",
-            "source_node_uid": "B1",
-            "target_node": "B2",
-            "target_node_uid": "B2",
+            "source_node_uid": "n0003",
+            "target_node_uid": "n0004",
             "target_slot_name": "gen",
-            "uid": "B1B2",
+            "uid": "n0003:sub:gen:n0004",
             "weight": 1
         },
-        "A1A2": {
+        "n0001:por:gen:n0002": {
             "certainty": 1,
             "source_gate_name": "por",
-            "source_node": "A1",
-            "source_node_uid": "A1",
-            "target_node": "A2",
-            "target_node_uid": "A2",
+            "source_node_uid": "n0001",
+            "target_node_uid": "n0002",
             "target_slot_name": "gen",
-            "uid": "A1A2",
+            "uid": "n0001:por:gen:n0002",
             "weight": 1
         },
-        "SB1": {
+        "n0005:gen:gen:n0003": {
             "certainty": 1,
             "source_gate_name": "gen",
-            "source_node": "S",
-            "source_node_uid": "S",
-            "target_node": "B1",
-            "target_node_uid": "B1",
+            "source_node_uid": "n0005",
+            "target_node_uid": "n0003",
             "target_slot_name": "gen",
-            "uid": "SB1",
+            "uid": "n0005:gen:gen:n0003",
             "weight": 1
         },
-        "SA1": {
+        "n0005:gen:gen:n0001": {
             "certainty": 1,
             "source_gate_name": "gen",
-            "source_node": "S",
-            "source_node_uid": "S",
-            "target_node": "A1",
-            "target_node_uid": "A1",
+            "source_node_uid": "n0005",
+            "target_node_uid": "n0001",
             "target_slot_name": "gen",
-            "uid": "SA1",
+            "uid": "n0005:gen:gen:n0001",
             "weight": 1
         }
     },
     "name": "fixed",
     "nodes": {
-        "A1": {
+        "n0001": {
             "activation": 0,
             "index": 2,
-            "name": "",
+            "name": "A1",
             "parameters": {},
             "parent_nodespace": "Root",
             "position": [
                 367,
                 115
             ],
-            "type": "Concept",
-            "uid": "A1"
+            "type": "Pipe",
+            "uid": "n0001"
         },
-        "S": {
+        "n0005": {
             "activation": 0,
             "index": 1,
-            "name": "",
+            "name": "S",
             "parameters": {
                 "datasource": "brightness_l"
             },
@@ -75,12 +67,12 @@ fixed_nodenet_data = """{
                 138
             ],
             "type": "Sensor",
-            "uid": "S"
+            "uid": "n0005"
         },
-        "A2": {
+        "n0002": {
             "activation": 0,
             "index": 4,
-            "name": "testnode",
+            "name": "A2",
             "parameters": {
                 "foo": "23"
             },
@@ -89,26 +81,26 @@ fixed_nodenet_data = """{
                 567,
                 118
             ],
-            "type": "Concept",
-            "uid": "A2"
+            "type": "Pipe",
+            "uid": "n0002"
         },
-        "B1": {
+        "n0003": {
             "activation": 0,
             "index": 3,
-            "name": "",
+            "name": "B1",
             "parameters": {},
             "parent_nodespace": "Root",
             "position": [
                 367,
                 296
             ],
-            "type": "Concept",
-            "uid": "B1"
+            "type": "Pipe",
+            "uid": "n0003"
         },
-        "ACTA": {
+        "n0006": {
             "activation": 0,
             "index": 6,
-            "name": "",
+            "name": "ACTA",
             "parameters": {
                 "type": "por"
             },
@@ -118,35 +110,20 @@ fixed_nodenet_data = """{
                 103
             ],
             "type": "Activator",
-            "uid": "ACTA"
+            "uid": "n0006"
         },
-        "B2": {
+        "n0004": {
             "activation": 0,
             "index": 5,
-            "name": "",
+            "name": "B2",
             "parameters": {},
             "parent_nodespace": "Root",
             "position": [
                 568,
                 298
             ],
-            "type": "Concept",
-            "uid": "B2"
-        },
-        "ACTB": {
-            "activation": 0,
-            "index": 7,
-            "name": "",
-            "parameters": {
-                "type": "sub"
-            },
-            "parent_nodespace": "Root",
-            "position": [
-                743,
-                336
-            ],
-            "type": "Activator",
-            "uid": "ACTB"
+            "type": "Pipe",
+            "uid": "n0004"
         }
     }
 }"""

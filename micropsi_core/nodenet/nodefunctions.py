@@ -1,32 +1,48 @@
+####################################################################################################
+#
+# These are the reference implementations for the node functions of the standard node types.
+# Node net engine implementations performing node calculations in Python are free to use
+# these implementations directly.
+# Non-python engine implementations, or performance-oriented python implementations,
+# can use these implementations as definitions (or for equivalence tests) and implement them
+# differently.
+#
+####################################################################################################
+
 
 def register(netapi, node=None, **params):
-    node.activation = node.get_slot("gen").activation
-    for type, gate in node.gates.items():
-        gate.gate_function(node.get_slot("gen").activation)
+    activation = node.get_slot('gen').activation
+    node.activation = node.get_gate('gen').gate_function(activation)
 
 
 def sensor(netapi, node=None, datasource=None, **params):
-    datasource_value = netapi.world.get_datasource(netapi.uid, datasource)
+    if datasource in netapi.world.get_available_datasources(netapi.uid):
+        datasource_value = netapi.world.get_datasource(netapi.uid, datasource)
+    else:
+        datasource_value = netapi.get_modulator(datasource)
     node.activation = datasource_value
-    node.gates["gen"].gate_function(datasource_value)
+    node.get_gate('gen').gate_function(datasource_value)
 
 
 def actor(netapi, node=None, datatarget=None, **params):
     if not netapi.world:
         return
     activation_to_set = node.get_slot("gen").activation
-    netapi.world.set_datatarget(netapi.uid, datatarget, activation_to_set)
-    # if activation_to_set > 0:
-        # node.activation = 1
-    feedback = netapi.world.get_datatarget_feedback(netapi.uid, datatarget)
+    if datatarget in netapi.world.get_available_datatargets(netapi.uid):
+        netapi.world.add_to_datatarget(netapi.uid, datatarget, activation_to_set)
+        feedback = netapi.world.get_datatarget_feedback(netapi.uid, datatarget)
+    else:
+        netapi.set_modulator(datatarget, activation_to_set)
+        feedback = 1
     if feedback is not None:
         node.get_gate('gen').gate_function(feedback)
 
 
 def concept(netapi, node=None, **params):
-    node.activation = node.get_slot("gen").activation
-    for type, gate in node.gates.items():
-        gate.gate_function(node.get_slot("gen").activation)
+    activation = node.get_slot('gen').activation
+    node.activation = activation
+    for gate_type in node.get_gate_types():
+        node.get_gate(gate_type).gate_function(activation)
 
 
 def script(netapi, node=None, **params):
@@ -103,71 +119,98 @@ def pipe(netapi, node=None, sheaf="default", **params):
     cat = 0.0
     exp = 0.0
 
-    neighbors = len(node.get_slot("por").incoming)
+    countdown = int(node.get_state("countdown") or 0)
+    expectation = float(node.get_parameter("expectation") or 1.0)
+    if node.get_slot("sub").activation <= 0 or (not node.get_slot("por").empty and node.get_slot("por").activation <= 0):
+        countdown = int(node.get_parameter("wait") or 1)
+    else:
+        countdown -= 1
 
-    gen += node.get_slot("gen").get_activation(sheaf)
-    if gen < 0.1: gen = 0
-    gen += node.get_slot("sur").get_activation(sheaf)
-    gen += node.get_slot("exp").get_activation(sheaf)
-    if gen > 1: gen = 1
+    gen += node.get_slot("gen").get_activation(sheaf) * node.get_slot("sub").get_activation(sheaf)
+    if abs(gen) < 0.1: gen = 0                                          # cut off gen loop at lower threshold
+
+    if node.get_slot("por").get_activation(sheaf) == 0 and not node.get_slot("por").empty:
+        gen = 0
+
+    if gen == 0:
+        gen += node.get_slot("sur").get_activation(sheaf)
+        gen += node.get_slot("exp").get_activation(sheaf)
+
+    # commented: trigger and pipes should be able to escape the [-1;1] cage on gen
+    # if gen > 1: gen = 1
+    # if gen < -1: gen = -1
 
     sub += max(node.get_slot("sur").get_activation(sheaf), 0)
     sub += node.get_slot("sub").get_activation(sheaf)
-    sub *= 0 if node.get_slot("por").get_activation(sheaf) < 0 else 1
-    sub *= 0 if node.get_slot("gen").get_activation(sheaf) > 0 else 1
+    sub += node.get_slot("cat").get_activation(sheaf)
+    sub *= max(node.get_slot("por").get_activation(sheaf), 0) if not node.get_slot("por").empty else 1
+    sub *= 0 if node.get_slot("gen").get_activation(sheaf) != 0 else 1
     if sub > 0: sub = 1
+    if sub < 0: sub = -1
 
     sur += node.get_slot("sur").get_activation(sheaf)
     if sur == 0: sur += node.get_slot("sur").get_activation("default")      # no activation in our sheaf, maybe from sensors?
-    sur += 0 if node.get_slot("gen").get_activation(sheaf) < 0.1 else 1
+    if abs(node.get_slot("gen").get_activation(sheaf) * node.get_slot("sub").get_activation(sheaf)) > 0.2:               # cut off sur-reports from gen looping before the loop fades away
+        sur += 1 if node.get_slot("gen").get_activation(sheaf) > 0 else -1
     sur += node.get_slot("exp").get_activation(sheaf)
-    if sur > 0:     # else: always propagate failure
-        sur *= 0 if node.get_slot("por").get_activation(sheaf) < 0 else 1
-        sur *= 0 if node.get_slot("ret").get_activation(sheaf) < 0 else 1
-    if sur < -1: sur = -1
-    if sur > 1: sur = 1
-    sur /= neighbors if neighbors > 1 else 1
 
-    por += node.get_slot("sur").get_activation(sheaf) * \
-           (1+node.get_slot("por").get_activation(sheaf))
+    if sur > 0 and sur < expectation:                                       # don't report anything below expectation
+        sur = 0
+
+    if countdown <= 0 and sur < expectation:                                # timeout, fail
+        sur = -1
+
+    if sur >= expectation:                                                  # success, reset countdown counter
+        countdown = int(node.get_parameter("wait") or 1)
+
+    # silencing for pipes in in por-ret chains
+    if not node.get_slot("ret").empty:                    # we're not-last in a chain
+        if not(node.get_slot("ret").get_activation(sheaf) == 0 and node.get_slot("sub").get_activation(sheaf) > 0):
+            sur = 0
+    if not node.get_slot("por").empty and node.get_slot("por").get_activation(sheaf) <= 0:
+        sur = 0
+
+    if sur > 1:
+        sur = 1
+    if sur < -1:
+        sur = -1
+
+    por += node.get_slot("sur").get_activation(sheaf)
     por += (0 if node.get_slot("gen").get_activation(sheaf) < 0.1 else 1) * \
            (1+node.get_slot("por").get_activation(sheaf))
+
+    if countdown <= 0 and por < expectation:
+        por = -1
+
+    por *= node.get_slot("por").get_activation(sheaf) if not node.get_slot("por").empty else 1  # only por if por
+    por *= node.get_slot("sub").get_activation(sheaf)                                           # only por if sub
     por += node.get_slot("por").get_activation(sheaf) if node.get_slot("sub").get_activation(sheaf) == 0 and node.get_slot("sur").get_activation(sheaf) == 0 else 0
-    por += 1 if neighbors > 1 else 0
-    if por <= 0: por = -1
+
     if por > 0: por = 1
 
     ret += node.get_slot("ret").get_activation(sheaf) if node.get_slot("sub").get_activation(sheaf) == 0 and node.get_slot("sur").get_activation(sheaf) == 0 else 0
-    ret += 1 if neighbors > 1 else 0
-    if ret <= 0: ret = -1
+    if node.get_slot("por").get_activation(sheaf) >= 0:
+        ret -= node.get_slot("sub").get_activation(sheaf)
+    if ret > 1:
+        ret = 1
 
     cat = sub
     if cat == 0: cat += node.get_slot("cat").get_activation(sheaf)
     if cat < 0: cat = 0
 
     exp += node.get_slot("sur").get_activation(sheaf)
-    exp += node.get_slot("exp").get_activation(sheaf) * 0.1                 # magic priming number
+    exp += node.get_slot("exp").get_activation(sheaf)
     if exp == 0: exp += node.get_slot("sur").get_activation("default")      # no activation in our sheaf, maybe from sensors?
     if exp > 1: exp = 1
 
-    # handle locking if configured for this node
-    sub_lock_needed = node.get_parameter('sublock')
-    if sub_lock_needed is not None:
-        surinput = node.get_slot("sur").get_activation(sheaf)
-        if sub > 0 and surinput < 1:
-            # we want to go sub, but we need to acquire a lock for that
-            if netapi.is_locked(sub_lock_needed):
-                if not netapi.is_locked_by(sub_lock_needed, node.uid+sheaf):
-                    # it's locked and not by us, so we need to pace ourselves and wait
-                    sub = 0
-            else:
-                # we can proceed, but we need to lock
-                netapi.lock(sub_lock_needed, node.uid+sheaf)
+    if node.get_slot('sub').get_activation(sheaf) > 0:
+        if sur > 0:
+            netapi.change_modulator('base_number_of_expected_events', 1)
+        elif sur < 0:
+            severity = len(node.get_gate("sub").get_links()) + len(node.get_gate("cat").get_links())
+            netapi.change_modulator('base_number_of_unexpected_events', severity)
 
-        if surinput >= 1:
-            # we can clear a lock if it's us who had acquired it
-            if netapi.is_locked_by(sub_lock_needed, node.uid+sheaf):
-                netapi.unlock(sub_lock_needed)
+    node.set_state("countdown", countdown)
 
     # set gates
     node.set_sheaf_activation(gen, sheaf)
@@ -177,13 +220,14 @@ def pipe(netapi, node=None, sheaf="default", **params):
     node.get_gate("sub").gate_function(sub, sheaf)
     node.get_gate("sur").gate_function(sur, sheaf)
     node.get_gate("exp").gate_function(exp, sheaf)
-    if cat > 0 and sub > 0:     # cats will be checked in their own sheaf
-        node.get_gate("cat").open_sheaf(cat, sheaf)
-        node.get_gate("cat").gate_function(0, sheaf)
-    else:
-        node.get_gate("cat").gate_function(cat, sheaf)
+    node.get_gate("cat").gate_function(cat, sheaf)
+    #if cat > 0 and node.get_slot("sub").get_activation(sheaf) > 0:     # cats will be checked in their own sheaf
+    #    node.get_gate("cat").open_sheaf(cat, sheaf)
+    #    node.get_gate("cat").gate_function(0, sheaf)
+    #else:
+    #    node.get_gate("cat").gate_function(cat, sheaf)
 
 
 def activator(netapi, node, **params):
     node.activation = node.get_slot("gen").activation
-    netapi.nodespaces[node.parent_nodespace].activators[node.parameters["type"]] = node.activation
+    netapi.get_nodespace(node.parent_nodespace).set_activator_value(node.get_parameter('type'), node.activation)

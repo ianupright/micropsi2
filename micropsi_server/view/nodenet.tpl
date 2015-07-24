@@ -10,7 +10,7 @@
                                     class="icon-chevron-right"></i></span></td>
 
                             <td>
-                                <div class="btn-group" id="nodenet_list">
+                                <div class="btn-group nodenet_list">
                                     <a class="btn" href="#">
                                         (no nodenet selected)
                                     </a>
@@ -40,24 +40,6 @@
                                     <a class="btn" id="zoomOut" href="#" data-nodenet-control>-</a>
                                 </div>
                             </td>
-                        </tr>
-                    </table>
-                </td>
-                <td>
-                    <table class="pull-right">
-                        <tr>
-                            <td style="white-space:nowrap;">
-                                <div class="btn-group">
-                                  <a href="#" id="nodenet_reset" class="btn" data-nodenet-control><i class="icon-fast-backward"></i></a>
-                                  <a href="#" id="nodenet_start" class="btn" data-nodenet-control><i class="icon-play"></i></a>
-                                  <a href="#" id="nodenet_step_forward" class="btn" data-nodenet-control><i class="icon-step-forward"></i></a>
-                                  <a href="#" id="nodenet_stop" class="btn" data-nodenet-control><i class="icon-pause"></i></a>
-                                </div>
-                            </td>
-
-                            <td align="right"><input id="nodenet_step" type="text" disabled="disabled"
-                                                     style="text-align:right; width:60px;" value="0"/></td>
-
                         </tr>
                     </table>
                 </td>
@@ -97,14 +79,25 @@
                         <td><label for="nodenet_renderlinks">render links</label></td>
                         <td><select name="nodenet_renderlinks" type="checkbox" name="nodenet_renderlinks" id="nodenet_renderlinks">
                             <option value="always">always</option>
-                            <option value="hover">on node hover</option>
+                            <option value="selection">on selected nodes</option>
                             <option value="no">never</opeion>
                         </select></td>
+                    </tr>
+                    <tr>
+                        <td><label for="nodenet_snap">Snap to grid</label></td>
+                        <td><input type="checkbox" name="nodenet_snap" id="nodenet_snap" /></td>
                     </tr>
                 </table>
                 <div class="controls">
                     <button type="submit" class="btn btn-primary">Apply</button>
                 </div>
+                <p>&nbsp;</p>
+                <p><strong>global modulators</strong>
+                <div class="modulators_container">
+                    <table class="modulators table-striped table-condensed">
+                    </table>
+                </div>
+                </p>
             </form>
 
             <form class="form-horizontal default_form hide" id="edit_nodespace_form">
@@ -117,27 +110,6 @@
                     <tr>
                         <td><label for="nodespace_name">Name</label></td>
                         <td><input type="text" name="nodespace_name" id="nodespace_name"></td>
-                    </tr>
-                    <tr>
-                        <td><label for="nodespace_gatefunction_nodetype">Gatefunction</label></td>
-                        <td><select name="nodespace_gatefunction_nodetype" id="nodespace_gatefunction_nodetype"></select></td>
-                    </tr>
-                    <tr>
-                        <td>&nbsp;</td>
-                        <td><select name="nodespace_gatefunction_gate" id="nodespace_gatefunction_gate"></select></td>
-                    </tr>
-                    <tr>
-                        <td>&nbsp;</td>
-                        <td><div class="pythoncode">
-                                <div class="textareafake">
-                                    <span class="loc">def gatefunction(x, r, t):</span>
-                                    <span class="loc indent">import math</span>
-                                    <div class="textarea indent1">
-                                        <textarea class="loc" name="nodespace_gatefunction" id="nodespace_gatefunction"></textarea>
-                                    </div>
-                                </div>
-                            </div>
-                        </td>
                     </tr>
                 </table>
                 <div class="controls">
@@ -152,7 +124,7 @@
                         <td><label for="link_weight_input">Weight</label></td>
                         <td><input type="text" class="" name="link_weight" id="link_weight_input"></td>
                     </tr>
-                    <tr>
+                    <tr style="display:none">
                         <td><label for="link_certainty_input">Certainty</label></td>
                         <td><input type="text" class="" name="link_certainty" id="link_certainty_input"></td>
                     </tr>
@@ -166,7 +138,8 @@
                     </tr>
                 </table>
                 <div class="controls">
-                    <button type="submit" class="btn btn-primary">Apply</button>
+                    <button type="button" class="deleteLink btn btn-danger btn-mini">Delete link</button>
+                    <button type="submit" class="saveLink btn btn-primary">Apply</button>
                 </div>
             </form>
 
@@ -185,7 +158,7 @@
                         <td><label for="gate_maximum">Maximum</label></td>
                         <td><input type="text" class="" name="maximum" id="gate_maximum"></td>
                     </tr>
-                    <tr>
+                    <tr style="display:none">
                         <td><label for="gate_certainty">Certainty</label></td>
                         <td><input type="text" class="" name="certainty" id="gate_certainty"></td>
                     </tr>
@@ -196,10 +169,6 @@
                     <tr>
                         <td><label for="gate_threshold">Threshold</label></td>
                         <td><input type="text" class="" name="threshold" id="gate_threshold"></td>
-                    </tr>
-                    <tr>
-                        <td><label for="gate_decay">Decay</label></td>
-                        <td><input type="text" class="" name="decay" id="gate_decay"></td>
                     </tr>
                     <tr>
                         <td colspan="2"><a href="#" class="gate_additional_trigger">Show additional parameters</a> (for gatefunction)</td>
@@ -215,7 +184,8 @@
                     <tr>
                         <td><label for="">Gatefunction</label></td>
                         <td>
-                           <textarea name="gatefunction" id="" disabled="disabled"></textarea>
+                           <select name="gate_gatefunction" id="gate_gatefunction">
+                           </select>
                         </td>
                     </tr>
                 </table>
@@ -365,18 +335,16 @@
 
 <div class="dropdown" id="multi_node_menu">
     <a class="dropdown-toggle" data-toggle="dropdown" href="#multi_node_menu"></a>
-    <ul class="nodenet_menu dropdown-menu">
-        <li data-copy-nodes><a href="#">Copy nodes</a></li>
-        <li data-paste-nodes><a href="#">Paste nodes</a></li>
-        <li><a href="#">Delete nodes</a></li>
+    <ul class="nodenet_menu dropdown-menu all_nodes">
     </ul>
 </div>
 
 <div class="dropdown" id="link_menu">
     <a class="dropdown-toggle" data-toggle="dropdown" href="#link_menu"></a>
     <ul class="nodenet_menu dropdown-menu">
-        <li><a href="#">Edit link</a></li>
         <li><a href="#">Delete link</a></li>
+        <li><a data-add-monitor href="#">Add link-weight monitor</a></li>
+        <li><a data-remove-monitor href="#">Remove link monitor</a></li>
     </ul>
 </div>
 
@@ -424,6 +392,26 @@
     <div class="modal-footer">
         <button class="btn" data-dismiss="modal">Close</button>
         <button class="btn btn-primary">Apply changes</button>
+    </div>
+</div>
+
+
+<div class="modal hide" id="copy_paste_modal">
+    <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal">×</button>
+        <h3 class="title"></h3>
+    </div>
+    <div class="modal-body">
+        <form class="form-horizontal">
+            <div class="control-group">
+                <fieldset>
+                    <textarea id="copy_paste_text"></textarea>
+                </fieldset>
+            </div>
+        </form>
+    </div>
+    <div class="modal-footer">
+        <button class="btn" data-dismiss="modal">Close</button>
     </div>
 </div>
 

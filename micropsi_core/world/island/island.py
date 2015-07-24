@@ -43,10 +43,10 @@ class Island(World):
         }
     }
 
-    def __init__(self, filename, world_type="Island", name="", owner="", uid=None, version=1):
+    def __init__(self, filename, world_type="Island", name="", owner="", engine=None, uid=None, version=1):
         World.__init__(self, filename, world_type=world_type, name=name, owner=owner, uid=uid, version=version)
         self.load_groundmap()
-        self.current_step = 0
+        # self.current_step = 0
         self.data['assets'] = self.assets
 
     def load_groundmap(self):
@@ -291,12 +291,13 @@ class Waterhole(WorldObject):
 
 class Survivor(WorldAdapter):
 
-    datatargets = {'action_eat': 0, 'action_drink': 0, 'loco_north': 0, 'loco_south': 0, 'loco_east': 0, 'loco_west': 0}
-
-    currentobject = None
+    supported_datasources = ['body-energy', 'body-water', 'body-integrity']
+    supported_datatargets = ['action_eat', 'action_drink', 'loco_north', 'loco_south', 'loco_east', 'loco_west']
 
     def __init__(self, world, uid=None, **data):
         super(Survivor, self).__init__(world, uid, **data)
+
+        self.currentobject = None
 
         self.energy = 1.0
         self.water = 1.0
@@ -313,7 +314,7 @@ class Survivor(WorldAdapter):
         if not "position" in data:
             self.position = self.world.groundmap['start_position']
 
-    def update(self):
+    def update_data_sources_and_targets(self):
         """called on every world simulation step to advance the life of the agent"""
 
         if self.is_dead:
@@ -401,10 +402,6 @@ class Survivor(WorldAdapter):
 class Braitenberg(WorldAdapter):
     """A simple Braitenberg vehicle chassis, with two light sensitive sensors and two engines"""
 
-    datasources = {'brightness_l': 0, 'brightness_r': 0}
-    datatargets = {'engine_l': 0, 'engine_r': 0}
-    datatarget_feedback = {'engine_l': 0, 'engine_r': 0}
-
     # positions of sensors, relative to origin of agent center
     brightness_l_offset = (-25, -50)
     brightness_r_offset = (+25, -50)
@@ -420,11 +417,18 @@ class Braitenberg(WorldAdapter):
     # maximum speed
     speed_limit = 1.
 
+    supported_datasources = ['brightness_l', 'brightness_r']
+    supported_datatargets = ['engine_l', 'engine_r']
+
+    def __init__(self, world, uid=None, **data):
+        super(Braitenberg, self).__init__(world, uid, **data)
+        self.datatarget_feedback = {'engine_l': 0, 'engine_r': 0}
+
     def initialize_worldobject(self, data):
         if not "position" in data:
             self.position = self.world.groundmap['start_position']
 
-    def update(self):
+    def update_data_sources_and_targets(self):
         """called on every world simulation step to advance the life of the agent"""
 
         # drive engines

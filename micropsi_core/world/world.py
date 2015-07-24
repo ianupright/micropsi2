@@ -52,11 +52,11 @@ class World(object):
 
     @property
     def current_step(self):
-        return self.data.get("step", 0)
+        return self.data.get('current_step', 0)
 
     @current_step.setter
     def current_step(self, current_step):
-        self.data['step'] = current_step
+        self.data['current_step'] = current_step
 
     @property
     def is_active(self):
@@ -66,9 +66,9 @@ class World(object):
     def is_active(self, is_active):
         self.data['is_active'] = is_active
 
-    supported_worldadapters = []
+    supported_worldadapters = ['Default']
 
-    def __init__(self, filename, world_type="", name="", owner="", uid=None, version=WORLD_VERSION):
+    def __init__(self, filename, world_type="", name="", owner="", uid=None, engine=None, version=WORLD_VERSION):
         """Create a new MicroPsi simulation environment.
 
         Arguments:
@@ -78,14 +78,14 @@ class World(object):
             uid (optional): unique handle of the world; if none is given, it will be generated
         """
 
-        self.logger = logging.getLogger('world_logger');
+        self.logger = logging.getLogger('world_logger')
 
         # persistent data
         self.data = {
             "version": WORLD_VERSION,  # used to check compatibility of the world data
             "objects": {},
             "agents": {},
-            "step": 0
+            "current_step": 0
         }
 
         folder = self.__module__.split('.')
@@ -156,11 +156,6 @@ class World(object):
             else:
                 self.logger.warn('Worldobject of type %s not supported anymore. Deleting object of this type.' % worldobject['type'])
                 del self.data['objects'][uid]
-        for uid, agent in self.data.get('agents', {}).items():
-            try:
-                self.agents[uid] = self.supported_worldadapters[agent['type']](self, **agent)
-            except KeyError:
-                warnings.warn('Worldadapter %s not found, can not spawn agent %s' % (agent['type'], agent['name']))
 
     def step(self):
         """ advance the simluation """
@@ -270,12 +265,11 @@ class World(object):
         except KeyError:
             return False, "Incompatible Worldadapter for this World."
 
-    def set_object_properties(self, uid, type=None, position=None, orientation=None, name=None, parameters=None):
+    def set_object_properties(self, uid, position=None, orientation=None, name=None, parameters=None):
         """set attributes of the world object 'uid'; only supplied attributes will be changed.
 
        Arguments:
            uid: the uid of the worldobject. Mandatory.
-           type: a new type for the object. Optional
            position: a new position for the object. Optional
            orientation: a new orientation for the object. Optional
            name: a new name for the object. Optional
@@ -283,8 +277,6 @@ class World(object):
 
         Returns True if object exists, otherwise False"""
         if uid in self.objects:
-            if type:
-                self.objects[uid].type = type
             if position:
                 self.objects[uid].position = position
             if orientation:
@@ -330,13 +322,13 @@ class World(object):
             return self.agents[nodenet_uid].get_datasource(key)
         return None
 
-    def set_datatarget(self, nodenet_uid, key, value):
+    def add_to_datatarget(self, nodenet_uid, key, value):
         """allows the nodenet to write a value to a datatarget"""
         if nodenet_uid in self.agents:
-            return self.agents[nodenet_uid].set_datatarget(key, value)
+            return self.agents[nodenet_uid].add_to_datatarget(key, value)
 
     def get_datatarget_feedback(self, nodenet_uid, key):
-        """allows the nodenet to write a value to a datatarget"""
+        """reads the feedback-value for a given datatarget from the worldadapter"""
         if nodenet_uid in self.agents:
             return self.agents[nodenet_uid].get_datatarget_feedback(key)
 
@@ -355,4 +347,8 @@ except ImportError as e:
 try:
     from micropsi_core.world.minecraft import minecraft
 except ImportError as e:
-    sys.stdout.write("Could not import minecraft world.\nError: %s \n\n" % e.msg)
+    if e.msg == "No module named 'spock'":
+        # ignore silently
+        pass
+    else:
+        sys.stdout.write("Could not import minecraft world.\nError: %s \n\n" % e.msg)

@@ -5,15 +5,15 @@
 
 __author__ = 'rvuine'
 
+import os
 import logging
 import time
 from operator import itemgetter
 
 MAX_RECORDS_PER_STORAGE = 1000
 
-class RecordWebStorageHandler(logging.Handler):
 
-    record_storage = None
+class RecordWebStorageHandler(logging.Handler):
 
     def __init__(self, record_storage):
         """
@@ -35,6 +35,8 @@ class RecordWebStorageHandler(logging.Handler):
             "logger": record.name,
             "time": record.created * 1000,
             "level": record.levelname,
+            "function": record.funcName,
+            "module": record.module,
             "msg": record.message
         }
         self.record_storage.append(dictrecord)
@@ -64,10 +66,15 @@ class MicropsiLogger():
 
     handlers = {}
 
+    default_format = '[%(name)8s] %(asctime)s - %(module)s:%(funcName)s() - %(levelname)s - %(message)s'
 
-    def __init__(self, default_logging_levels={}):
+    def __init__(self, default_logging_levels={}, log_to_file=False):
 
-        logging.basicConfig(level=self.logging_levels.get('logging_level', logging.INFO))
+        logging.basicConfig(
+            level=self.logging_levels.get('logging_level', logging.INFO),
+            format=self.default_format,
+            datefmt='%d.%m. %H:%M:%S'
+        )
 
         self.system_logger = logging.getLogger("system")
         self.world_logger = logging.getLogger("world")
@@ -84,12 +91,22 @@ class MicropsiLogger():
             'world': RecordWebStorageHandler(self.world_record_storage),
             'nodenet': RecordWebStorageHandler(self.nodenet_record_storage)
         }
+        self.filehandlers = {}
+        if log_to_file:
+            if os.path.isfile(log_to_file):
+                os.remove(log_to_file)
+            for key in self.handlers:
+                self.filehandlers[key] = logging.FileHandler(log_to_file, mode='a')
 
         logging.getLogger("py.warnings").addHandler(self.handlers['system'])
 
-        logging.getLogger("system").addHandler(self.handlers['system'])
-        logging.getLogger("world").addHandler(self.handlers['world'])
-        logging.getLogger("nodenet").addHandler(self.handlers['nodenet'])
+        formatter = logging.Formatter(self.default_format)
+        for key in self.handlers:
+            self.handlers[key].setFormatter(formatter)
+            logging.getLogger(key).addHandler(self.handlers[key])
+            if key in self.filehandlers:
+                self.filehandlers[key].setFormatter(formatter)
+                logging.getLogger(key).addHandler(self.filehandlers[key])
 
         logging.getLogger("system").debug("System logger ready.")
         logging.getLogger("world").debug("World logger ready.")

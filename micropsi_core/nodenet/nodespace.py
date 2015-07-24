@@ -3,85 +3,155 @@
 Nodespace definition
 """
 
-from .netentity import NetEntity
-import micropsi_core.tools
-import warnings
+from abc import ABCMeta, abstractmethod
 
 __author__ = 'joscha'
 __date__ = '09.05.12'
 
 
-class Nodespace(NetEntity):
-    """A container for net entities.
+class Nodespace(metaclass=ABCMeta):
+    """
+    A container for Nodes and Nodespaces.
+    All Nodes and Nodespaces have exactly one parent nodespace, except for the 'Root' nodespace, whose
+    parent nodespace is None.
 
-    One nodespace is marked as root, all others are contained in
-    exactly one other nodespace.
+    Nodespaces define for their direct children nodes:
+    - the scope for directional activators
 
-    Attributes:
-        activators: a dictionary of activators that control the spread of activation, via activator nodes
-        netentities: a dictionary containing all the contained nodes and nodespaces, to speed up drawing
+    directional activator scope are not heritable.
     """
 
-    def __init__(self, nodenet, parent_nodespace, position, name="", uid=None,
-                 index=None, gatefunctions=None):
-        """create a node space at a given position and within a given node space"""
-        self.activators = {}
-        self.netentities = {}
-        uid = uid or micropsi_core.tools.generate_uid()
-        NetEntity.__init__(self, nodenet, parent_nodespace, position, name, "nodespaces", uid, index)
-        nodenet.nodespaces[self.uid] = self
-        if not gatefunctions:
-            gatefunctions = dict()
-        self.gatefunctions = {}
-        for nodetype in gatefunctions:
-            for gatetype in gatefunctions[nodetype]:
-                self.set_gate_function(nodetype, gatetype, gatefunctions[nodetype][gatetype])
+    @property
+    def data(self):
+        data = {
+            "uid": self.uid,
+            "index": self.index,
+            "name": self.name,
+            "position": self.position,
+            "parent_nodespace": self.parent_nodespace,
+        }
+        return data
 
-    def get_contents(self):
-        """returns a dictionary with all contained net entities, related links and dependent nodes"""
-        return self.netentities
+    @property
+    @abstractmethod
+    def uid(self):
+        """
+        The uid of this node
+        """
+        pass  # pragma: no cover
 
+    @property
+    @abstractmethod
+    def index(self):
+        """
+        The index property of this node. Index properties are used for persistent sorting information.
+        """
+        pass  # pragma: no cover
+
+    @index.setter
+    @abstractmethod
+    def index(self, index):
+        """
+        Sets the index property of this node. Index properties are used for persistent sorting information.
+        """
+        pass  # pragma: no cover
+
+    @property
+    @abstractmethod
+    def position(self):
+        """
+        This node's 2D coordinates within its nodespace
+        """
+        # todo: persistent 2D coordinates are likely to be made non-persistent or stored elsewhere
+        pass  # pragma: no cover
+
+    @position.setter
+    @abstractmethod
+    def position(self, position):
+        """
+        This node's 2D coordinates within its nodespace
+        """
+        # todo: persistent 2D coordinates are likely to be made non-persistent or stored elsewhere
+        pass  # pragma: no cover
+
+    @property
+    @abstractmethod
+    def name(self):
+        """
+        This nodespace's human readable name for display purposes. Returns the UID if no human readable name has been set.
+        """
+        pass  # pragma: no cover
+
+    @name.setter
+    @abstractmethod
+    def name(self, name):
+        """
+        Sets this nodespace's human readable name for display purposes.
+        """
+        pass  # pragma: no cover
+
+    @property
+    @abstractmethod
+    def parent_nodespace(self):
+        """
+        The UID of this node's parent nodespace
+        """
+        pass  # pragma: no cover
+
+    @parent_nodespace.setter
+    @abstractmethod
+    def parent_nodespace(self, uid):
+        """
+        Sets this nodespace's parent nodespace by UID, effectively moving from its old parent space to the new one
+        """
+        pass  # pragma: no cover
+
+    @abstractmethod
     def get_activator_value(self, type):
-        """returns the value of the activator of the given type, or 1, if none exists"""
-        pass
+        """
+        Returns the current value for the directional activator with the given type
+        This only needs to be implemented if the reference implementation for the node functions from
+        nodefunctions.py is being used.
 
-    def get_data_targets(self):
-        """Returns a dictionary of available data targets to associate actors with.
+        Alternative implementations are free to handle directional activators in node functions directly and
+        can pass on the implementation of this method.
 
-        Data targets are either handed down by the node net manager (to operate on the environment), or
-        by the node space itself, to perform directional activation."""
-        pass
+        """
+        pass  # pragma: no cover
 
-    def get_data_sources(self):
-        """Returns a dictionary of available data sources to associate sensors with.
+    @abstractmethod
+    def set_activator_value(self, type, value):
+        """
+        Sets the value for the directional activator with the given type, causing gates of nodes in this node space
+        to calculate their gate functions accordingly.
+        This only needs to be implemented if the reference implementation for the node functions from
+        nodefunctions.py is being used.
 
-        Data sources are either handed down by the node net manager (to read from the environment), or
-        by the node space itself, to obtain information about its contents."""
-        pass
+        Alternative implementations are free to handle directional activators in node functions directly and
+        can pass on the implementation of this method.
+        """
+        pass  # pragma: no cover
 
-    def set_gate_function(self, nodetype, gatetype, gatefunction, parameters=None):
-        """Sets the gatefunction for a given node- and gatetype within this nodespace"""
-        if gatefunction:
-            if 'gatefunctions' not in self.data:
-                self.data['gatefunctions'] = {}
-            if nodetype not in self.data['gatefunctions']:
-                self.data['gatefunctions'][nodetype] = {}
-            self.data['gatefunctions'][nodetype][gatetype] = gatefunction
-            if nodetype not in self.gatefunctions:
-                self.gatefunctions[nodetype] = {}
-            try:
-                import math
-                self.gatefunctions[nodetype][gatetype] = micropsi_core.tools.create_function(gatefunction, parameters="x, r, t", additional_symbols={'math': math})
-            except SyntaxError as err:
-                warnings.warn("Syntax error while compiling gate function: %s, %s" % (gatefunction, str(err)))
-                raise err
-        else:
-            if nodetype in self.gatefunctions and gatetype in self.gatefunctions[nodetype]:
-                del self.gatefunctions[nodetype][gatetype]
-            if nodetype in self.data['gatefunctions'] and gatetype in self.data['gatefunctions'][nodetype]:
-                del self.data['gatefunctions'][nodetype][gatetype]
+    @abstractmethod
+    def unset_activator_value(self, type):
+        """
+        Unsets the value for the directional activator with the given type, causing gates of nodes in this node space
+        to calculate their gate functions accordingly (with default behavior, i.e. as if a value of 1 had been set)
+        This only needs to be implemented if the reference implementation for the node functions from
+        nodefunctions.py is being used.
 
-    def get_gatefunction(self, nodetype, gatetype):
-        """Retrieve a bytecode-compiled gatefunction for a given node- and gatetype"""
-        if nodetype in self.gatefunctions and gatetype in self.gatefunctions[nodetype]:
-            return self.gatefunctions[nodetype][gatetype]
+        Alternative implementations are free to handle directional activators in node functions directly and
+        can pass on the implementation of this method.
+        """
+        pass  # pragma: no cover
+
+    @abstractmethod
+    def get_known_ids(self, entitytype=None):
+        """
+        Returns a list of all UIDs in this nodespace.
+        If an entity type is given, the list will be filtered. Valid entity type parameters are:
+        "nodes" - return nodes only
+        "nodespaces" - return node spaces only
+        """
+        pass  # pragma: no cover
+

@@ -2,6 +2,11 @@
  * Additional styles for MicroPsi
  */
 
+h3 {
+  font-size: 18px;
+  line-height: 27px;
+}
+
 .editor_field {
     height: 500px;
     overflow: scroll;
@@ -33,7 +38,12 @@
 .delete_monitor i { opacity: 0.5; }
 .delete_monitor:hover i { opacity: 1; }
 
-.logentry{ display:block; white-space: nowrap;}
+.logentry{
+  display:block;
+  white-space: pre;
+  font-size: 11px;
+  line-height: 13px;
+}
 
 .contentbox {
   height: 100%;
@@ -162,7 +172,7 @@
 
 .notifications {
   position: fixed;
-  z-index: 1050;
+  z-index: 1060;
 }
 
 /* Positioning */
@@ -356,54 +366,18 @@ graphs
   overflow: auto;
 }
 
-
-.textareafake {
-  background: white;
-  font-family: monospace;
-  font-size: 12px;
-  background-color: #ffffff;
-  border: 1px solid #cccccc;
-  -webkit-border-radius: 3px;
-  -moz-border-radius: 3px;
-  border-radius: 3px;
-  -webkit-box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075);
-  -moz-box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075);
-  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075);
-  -webkit-transition: border linear 0.2s, box-shadow linear 0.2s;
-  -moz-transition: border linear 0.2s, box-shadow linear 0.2s;
-  -ms-transition: border linear 0.2s, box-shadow linear 0.2s;
-  -o-transition: border linear 0.2s, box-shadow linear 0.2s;
-  transition: border linear 0.2s, box-shadow linear 0.2s;
-}
-.pythoncode .loc {
-  display: block;
-  padding: 1px 2px;
-}
-.loc.indent {
-  padding-left: 20px;
-}
-.pythoncode textarea{
-  font-size: 12px !important;
-  outline:none;
-  color: black;
-  border: 0 none;
-  -webkit-box-shadow: none;
-  -moz-box-shadow: none;
-  box-shadow: none;
-  font-family: monospace;
-  margin-left: 18px;
-  -webkit-transition: none;
-  -moz-transition: none;
-  -ms-transition: none;
-  -o-transition: none;
-  transition: none;
-
+.monospace{
+    font-family: monospace;
 }
 
-label input[type="radio"] {
+label input[type="radio"], label input[type="checkbox"] {
   padding: 0;
-  vertical-align: middle;
+  vertical-align: text-top;
   margin: 0;
+}
+
+.section .form-horizontal input[type="checkbox"] {
+  margin-bottom: 5px;
 }
 
 .dropdown li.disabled {
@@ -419,3 +393,129 @@ label input[type="radio"] {
   background-color: transparent;
 }
 
+
+div.modulators_container{
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+table.modulators button { visibility: hidden;}
+
+table.modulators tr:hover button { visibility: visible;}
+
+table.emoexpression td {
+  padding: 4px 10px;
+}
+
+#face_viewer .slider.slider-horizontal .slider-selection,
+  #face_viewer .slider.slider-horizontal .slider-track-low,
+  #face_viewer .slider.slider-horizontal .slider-track-high {
+  background-color: #bbb;
+  background-image: none;
+}
+
+#face_viewer .slider-handle.circle {
+  width: 13px;
+  height: 13px;
+  margin-top: -2px;
+}
+#face_viewer .slider-handle.triangle {
+  margin-top: 3px;
+  border-width: 0px 5px 9px;
+  margin-left: -5px;
+}
+
+#face_viewer .slider-track {
+  height: 7px;
+  box-shadow: 0px 1px 2px rgba(0, 0, 0, 0.2) inset
+}
+
+#loading.modal {
+  position: fixed;
+  top: 10px !important;
+  z-index: 1200;
+  display: none;
+}
+#loading.modal p {
+  text-align: center;
+  font-weight: bold;
+  margin: 10px 0;
+}
+
+.modal {
+  top: 100px !important;
+}
+
+#simulation_controls{
+  margin-right: 20px;
+}
+
+#simulation_controls .step_counters {
+  font-size: 8px;
+  line-height: 9px;
+  text-align: left;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  margin-right: 1px;
+  border-right: 1px solid #333;
+}
+
+.btn-group .btn.separated {
+  border-right: 1px solid #333;
+  margin-right: 1px;
+}
+#simulation_controls .btn-expand {
+  font-size: 8px;
+  padding-left: 1px;
+  padding-right: 1px;
+  border-left: 0;
+  color: #333;
+}
+
+.running_indicator {
+  font-size: 8px !important;
+  line-height: 9px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  height: 18px
+}
+.running_icon {
+  float: left;
+}
+.runner_paused {
+  opacity: 0.6;
+}
+
+.running_text > span {
+  display: block;
+  padding-left: 20px;
+  font-weight: bold;
+}
+.navbar .btn.disabled {
+  background-color: #e0e0e0;
+  opacity: 1;
+}
+
+#copy_paste_text {
+  width: 100%;
+  min-height: 250px;
+}
+
+.layoutbtn {
+  width: 30px;
+  height: 30px;
+  font-size: 27px;
+  text-align: left;
+  padding-left: 6px;
+}
+
+.color-chooser .input-group-addon i{
+  display: inline-block;
+  width: 220px !important;
+  height: 20px !important;
+  vertical-align: middle;
+
+}
+.color-chooser input {
+  display: none;
+}
