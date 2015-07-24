@@ -45,7 +45,7 @@ try:
     import theano
     engine_defaults = "dict_engine,theano_engine"
 except:
-    engine_defaults = "dict_engine"
+    engine_defaults = "strongcore_engine"
 
 
 def set_logging_levels():
@@ -63,7 +63,7 @@ def pytest_generate_tests(metafunc):
     if 'engine' in metafunc.fixturenames:
         engines = []
         for e in metafunc.config.option.engine.split(','):
-            if e in ['theano_engine', 'dict_engine']:
+            if e in ['theano_engine', 'dict_engine', 'strongcore_engine']:
                 engines.append(e)
         if not engines:
             pytest.exit("Unknown engine.")

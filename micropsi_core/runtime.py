@@ -54,6 +54,7 @@ logger = MicropsiLogger({
 
 nodenet_lock = threading.Lock()
 
+message = lambda x: print(x, flush=True, end="")
 
 def add_signal_handler(handler):
     signal_handler_registry.append(handler)
@@ -264,6 +265,12 @@ def load_nodenet(nodenet_uid):
             elif engine == 'theano_engine':
                 from micropsi_core.nodenet.theano_engine.theano_nodenet import TheanoNodenet
                 nodenets[nodenet_uid] = TheanoNodenet(
+                    name=data.name, worldadapter=worldadapter,
+                    world=world, owner=data.owner, uid=data.uid,
+                    native_modules=filter_native_modules(engine))
+            elif engine == 'strongcore_engine':
+                from micropsi_core.nodenet.strongcore_engine.strongcore_nodenet import StrongCoreNodenet
+                nodenets[nodenet_uid] = StrongCoreNodenet(
                     name=data.name, worldadapter=worldadapter,
                     world=world, owner=data.owner, uid=data.uid,
                     native_modules=filter_native_modules(engine))
